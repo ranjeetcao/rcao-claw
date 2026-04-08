@@ -11,7 +11,7 @@ jobs:
     name: ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
       - name: Install ShellCheck
         run: sudo apt-get install -y shellcheck
       - name: Run ShellCheck on bin/ scripts
@@ -23,7 +23,7 @@ jobs:
     name: YAML Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
       - name: Install yamllint
         run: pip install yamllint
       - name: Lint docker-compose.yml
@@ -33,10 +33,15 @@ jobs:
     name: JSON Validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
       - name: Validate all JSON files
         run: |
-          find . -name '*.json' -not -path './.git/*' | while read -r f; do
+          set -euo pipefail
+          failed=0
+          while IFS= read -r f; do
             echo "Validating: $f"
-            python3 -c "import json; json.load(open('$f'))"
-          done
+            if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f"; then
+              failed=1
+            fi
+          done < <(find . -name '*.json' -not -path './.git/*')
+          exit "$failed"

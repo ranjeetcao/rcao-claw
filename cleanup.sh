@@ -10,9 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Parse .env safely (no source — prevents code injection)
 ENV_FILE="$SCRIPT_DIR/.env"
-OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
-REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
-_WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+REPO=$(grep '^REPO=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+_WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 
 # Resolve WORKSPACE_DIR (expand ~ to $HOME), fallback to $HOME/workspace
 if [[ -n "${_WORKSPACE_DIR:-}" ]]; then

@@ -13,7 +13,6 @@
     }
   },
   "models": {
-    "_comment": "Set OLLAMA_MODEL in .env to change the default model",
     "default": "qwen3.5",
     "providers": {
       "ollama": {

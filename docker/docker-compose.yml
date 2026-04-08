@@ -1,3 +1,5 @@
+name: zupee-claw
+
 services:
   ollama:
     image: ollama/ollama:0.6.2

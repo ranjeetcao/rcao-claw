@@ -1,7 +1,7 @@
 # Zupee Claw
 
 <!-- Uncomment when CI is enabled
-[![Lint](https://github.com/<your-org>/zupee-claw/actions/workflows/lint.yml/badge.svg)](https://github.com/<your-org>/zupee-claw/actions/workflows/lint.yml)
+[![Lint](https://github.com/zupee-labs/zupee-claw/actions/workflows/lint.yml/badge.svg)](https://github.com/zupee-labs/zupee-claw/actions/workflows/lint.yml)
 -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -51,7 +51,7 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture, secu
 
 ```bash
 # 1. Clone
-git clone https://github.com/<your-org>/zupee-claw.git
+git clone https://github.com/zupee-labs/zupee-claw.git
 cd zupee-claw
 
 # 2. Configure environment
@@ -101,7 +101,7 @@ All commands run via SSH gateway from the Claw container to the host.
 | `git-status [repo]` | Check working tree |
 | `git-pull [repo]` | Pull latest with rebase |
 | `run-tests [repo]` | Run test suite |
-| `run-claude <prompt> [repo]` | Coding tasks (15 turns, $10 cap) |
+| `run-claude <prompt> [repo]` | Coding tasks (25 turns, $10 cap) |
 | `service-status` | Host health + list repos |
 
 Default repo is set in `.env`. All commands accept an optional `[repo]` override.
