@@ -17,7 +17,6 @@ else
 fi
 echo ""
 echo "=== Available Repos ==="
-WORKSPACE_ROOT="$HOME/workspace"
 ls -1 "$WORKSPACE_ROOT" 2>/dev/null || echo "  (none)"
 echo ""
 echo "=== Disk Usage ==="

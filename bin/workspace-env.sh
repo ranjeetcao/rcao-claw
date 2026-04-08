@@ -3,16 +3,24 @@
 # Parses .env safely (no shell execution), allows override via argument
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACE_ROOT="$HOME/workspace"
 ENV_FILE="$SCRIPT_DIR/../.env"
 
 # Parse .env safely (grep+cut, NOT source — prevents code injection via .env)
 if [[ -f "$ENV_FILE" ]]; then
-    REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-    OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+    REPO=$(grep '^REPO=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+    OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+    _WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 else
     REPO=""
     OPENCLAW_VERSION=""
+    _WORKSPACE_DIR=""
+fi
+
+# Resolve WORKSPACE_DIR (expand ~ to $HOME), fallback to $HOME/workspace
+if [[ -n "$_WORKSPACE_DIR" ]]; then
+    WORKSPACE_ROOT="${_WORKSPACE_DIR/#\~/$HOME}"
+else
+    WORKSPACE_ROOT="$HOME/workspace"
 fi
 
 # Allow override via first argument (if caller passes one)
@@ -49,5 +57,6 @@ if [[ ! -d "$WORKDIR" ]]; then
 fi
 
 export WORKDIR
+export WORKSPACE_ROOT
 export REPO
 export OPENCLAW_VERSION
