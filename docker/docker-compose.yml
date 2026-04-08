@@ -1,6 +1,6 @@
 services:
   ollama:
-    image: ollama/ollama:0.6.2
+    image: ollama/ollama:0.20.3
     container_name: zupee-ollama
     volumes:
       - ollama-models:/root/.ollama
