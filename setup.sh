@@ -8,10 +8,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Parse .env safely (no source — prevents code injection)
+# Ensure .env exists (copy from example if missing)
 ENV_FILE="$SCRIPT_DIR/.env"
-OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
-REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+if [[ ! -f "$ENV_FILE" ]]; then
+    if [[ -f "$SCRIPT_DIR/.env.example" ]]; then
+        cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
+        echo "Created .env from .env.example — edit it to customize."
+    else
+        echo "Error: .env not found and no .env.example to copy from." >&2
+        exit 1
+    fi
+fi
+
+# Parse .env safely (no source — prevents code injection)
+OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
