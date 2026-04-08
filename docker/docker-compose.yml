@@ -7,13 +7,13 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8G
-          cpus: "4"
+          memory: ${OLLAMA_MEM:-4G}
+          cpus: "${OLLAMA_CPUS:-1.5}"
     networks:
       - isolated
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,23 +31,8 @@ services:
     ports:
       - "127.0.0.1:3000:3000"       # Web UI - localhost only, not exposed to network
     volumes:
-      # Claw config (read-only - agent cannot modify its own config)
-      - ../openclaw-home/openclaw.json:/home/openclaw/.openclaw/openclaw.json:ro
-
-      # Agent workspace personality files (read-only - agent cannot rewrite its own rules)
-      - ../openclaw-home/workspace/AGENTS.md:/home/openclaw/.openclaw/workspace/AGENTS.md:ro
-      - ../openclaw-home/workspace/SOUL.md:/home/openclaw/.openclaw/workspace/SOUL.md:ro
-      - ../openclaw-home/workspace/USER.md:/home/openclaw/.openclaw/workspace/USER.md:ro
-      - ../openclaw-home/workspace/IDENTITY.md:/home/openclaw/.openclaw/workspace/IDENTITY.md:ro
-      - ../openclaw-home/workspace/TOOLS.md:/home/openclaw/.openclaw/workspace/TOOLS.md:ro
-
-      # Agent writable data (memory, sessions, skills, credentials)
-      - ../openclaw-home/workspace/MEMORY.md:/home/openclaw/.openclaw/workspace/MEMORY.md:rw
-      - ../openclaw-home/workspace/memory:/home/openclaw/.openclaw/workspace/memory:rw
-      - ../openclaw-home/workspace/skills:/home/openclaw/.openclaw/workspace/skills:rw
-      - ../openclaw-home/agents:/home/openclaw/.openclaw/agents:rw
-      - ../openclaw-home/credentials:/home/openclaw/.openclaw/credentials:ro
-      - ../openclaw-home/skills:/home/openclaw/.openclaw/skills:rw
+      # Claw home directory (writable - gateway needs to write temp files alongside config)
+      - ../openclaw-home:/home/openclaw/.openclaw:rw
 
       # Whitelisted scripts (read-only - container can see but not modify)
       - ../bin:/openclaw/bin:ro
@@ -79,11 +64,12 @@ services:
       - isolated
       - host-access
       - squid-internal
+      - web-access
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: "2"
+          memory: ${CLAW_MEM:-1G}
+          cpus: "${CLAW_CPUS:-1}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
@@ -111,7 +97,7 @@ services:
           cpus: "0.5"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "squidclient -h 127.0.0.1 -p 3128 mgr:info 2>&1 | grep -q 'Squid Object Cache'"]
+      test: ["CMD", "bash", "-c", "echo -e 'HEAD / HTTP/1.0\\r\\n\\r\\n' > /dev/tcp/127.0.0.1/3128"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -135,6 +121,10 @@ networks:
   squid-internal:
     driver: bridge
     internal: true
+
+  # Network for Web UI port publishing (localhost only)
+  web-access:
+    driver: bridge
 
   # Egress network for squid -> internet (Slack API)
   squid-egress:

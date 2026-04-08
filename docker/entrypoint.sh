@@ -37,7 +37,6 @@ done
 # Start Claw gateway (tee to both stdout for docker logs and file for persistence)
 echo "[entrypoint] Starting Claw gateway on :3000"
 openclaw gateway run \
-    --bind 0.0.0.0 \
+    --bind lan \
     --port 3000 \
-    --force \
     2>&1 | tee -a /openclaw/logs/openclaw.log

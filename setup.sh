@@ -8,11 +8,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Parse .env safely (no source — prevents code injection)
-ENV_FILE="$SCRIPT_DIR/.env"
-OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
-REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
-
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -22,6 +17,23 @@ info()  { echo -e "${GREEN}[+]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 error() { echo -e "${RED}[x]${NC} $*"; }
 step()  { echo -e "\n${GREEN}=== $* ===${NC}"; }
+
+# --- Auto-create .env if missing ---------------------------------------------
+
+ENV_FILE="$SCRIPT_DIR/.env"
+if [[ ! -f "$ENV_FILE" ]]; then
+    if [[ -f "$SCRIPT_DIR/.env.example" ]]; then
+        cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
+        info "Created .env from .env.example (edit to customize)"
+    else
+        error ".env.example not found. Cannot continue."
+        exit 1
+    fi
+fi
+
+# Parse .env safely (no source — prevents code injection)
+OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
 
 # --- Pre-flight checks -------------------------------------------------------
 
@@ -45,20 +57,48 @@ if ! command -v ssh-keygen &>/dev/null; then
 fi
 info "SSH tools available"
 
+# Detect system resources and calculate container limits
+TOTAL_CPUS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
+TOTAL_MEM_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || \
+    sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1048576)}' || echo 8192)
+
+if [[ "$TOTAL_MEM_MB" -lt 6144 ]]; then
+    warn "Only ${TOTAL_MEM_MB}MB RAM detected. Minimum recommended: 6GB."
+fi
+
+# Calculate resource limits (leave headroom for host OS)
+export OLLAMA_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.6; if (v < 0.5) v = 0.5; printf \"%.1f\", v}")
+export OLLAMA_MEM="$(( TOTAL_MEM_MB * 50 / 100 ))M"
+export CLAW_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.4; if (v < 0.25) v = 0.25; printf \"%.1f\", v}")
+export CLAW_MEM="$(( TOTAL_MEM_MB * 20 / 100 ))M"
+info "System: ${TOTAL_CPUS} CPUs, ${TOTAL_MEM_MB}MB RAM"
+info "  Ollama limits: ${OLLAMA_CPUS} CPUs, ${OLLAMA_MEM}"
+info "  Claw limits:   ${CLAW_CPUS} CPUs, ${CLAW_MEM}"
+
 # --- Create host directories -------------------------------------------------
 
 step "Creating directories"
 
 mkdir -p "$SCRIPT_DIR/logs"
 mkdir -p "$SCRIPT_DIR/logs/squid"
-# Squid runs as proxy user (UID 13) inside container — needs write access to mounted log dir
-chmod 777 "$SCRIPT_DIR/logs/squid"
 mkdir -p "$SCRIPT_DIR/openclaw-home/agents/main/sessions"
 mkdir -p "$SCRIPT_DIR/openclaw-home/credentials"
 mkdir -p "$SCRIPT_DIR/openclaw-home/skills"
 mkdir -p "$SCRIPT_DIR/openclaw-home/workspace/memory"
 mkdir -p "$SCRIPT_DIR/openclaw-home/workspace/skills"
-info "Directory structure ready"
+
+# Create MEMORY.md if missing (docker bind-mounts it as a file)
+touch "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
+
+# Fix permissions for container user (UID 1001 inside container)
+# Squid runs as proxy user (UID 13) — needs write access to mounted log dir
+chmod 777 "$SCRIPT_DIR/logs/squid"
+# Logs dir writable by container user
+chmod 777 "$SCRIPT_DIR/logs"
+# openclaw-home writable by container (gateway writes temp files, auto-migrates config)
+chmod -R a+rwX "$SCRIPT_DIR/openclaw-home"
+
+info "Directory structure ready (permissions set for container access)"
 
 # --- Generate SSH keypair (if not exists) ------------------------------------
 
@@ -71,6 +111,10 @@ else
     ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" -C "openclaw-docker"
     info "SSH keypair generated"
 fi
+
+# SSH key needs to be readable by container user (mounted read-only, but must be world-readable
+# since container UID differs from host UID). The entrypoint copies it to a secure location with 600.
+chmod 644 "$SSH_KEY"
 
 # --- Setup restricted user (requires sudo) -----------------------------------
 
@@ -227,10 +271,34 @@ echo "Default repo: ${REPO:-'(not set)'}"
 echo ""
 read -rp "Build and start Docker containers? [y/N] " confirm
 if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    # Export vars for docker-compose interpolation
+    export OPENCLAW_VERSION
+    export REPO
+
     cd "$SCRIPT_DIR/docker"
     docker compose build --build-arg OPENCLAW_VERSION="$OPENCLAW_VERSION"
     docker compose up -d
     info "Containers started"
+
+    # Wait for gateway to become healthy (generates auth token on first start)
+    echo ""
+    info "Waiting for gateway to become healthy..."
+    for i in $(seq 1 90); do
+        if curl -sf http://localhost:3000/health &>/dev/null; then
+            info "Gateway is healthy"
+            break
+        fi
+        if [[ $i -eq 90 ]]; then
+            warn "Gateway not healthy after 90s — check logs with: docker logs zupee-claw"
+        fi
+        sleep 1
+    done
+
+    # Auto-approve CLI device pairing so gateway commands work immediately
+    if curl -sf http://localhost:3000/health &>/dev/null; then
+        info "Approving CLI device pairing..."
+        docker compose exec openclaw openclaw devices approve --latest 2>/dev/null || true
+    fi
 
     # Pull Qwen model
     echo ""
@@ -267,23 +335,17 @@ else
     warn "Ollama container: not running"
 fi
 
+if docker ps --format '{{.Names}}' | grep -q zupee-squid; then
+    info "Squid proxy: running"
+else
+    warn "Squid proxy: not running"
+fi
+
 # Check web UI
 if curl -sf http://localhost:3000/health &>/dev/null; then
     info "Web UI: http://localhost:3000 (healthy)"
 else
     warn "Web UI: not responding yet (may still be starting)"
-fi
-
-# Check Squid proxy
-if docker ps --format '{{.Names}}' | grep -q zupee-squid; then
-    info "Squid proxy: running"
-    if curl -sf --proxy http://127.0.0.1:3128 --max-time 5 https://slack.com/api/api.test &>/dev/null; then
-        info "Squid proxy: Slack API reachable"
-    else
-        warn "Squid proxy: Slack API not reachable (may still be starting)"
-    fi
-else
-    warn "Squid proxy: not running"
 fi
 
 # Check Slack tokens
@@ -304,15 +366,39 @@ else
     warn "SSH key: missing"
 fi
 
+# Extract gateway auth token
+GATEWAY_TOKEN=""
+if docker ps --format '{{.Names}}' | grep -q zupee-claw; then
+    GATEWAY_TOKEN=$(docker exec zupee-claw cat /home/openclaw/.openclaw/openclaw.json 2>/dev/null \
+        | grep -o '"token"[[:space:]]*:[[:space:]]*"[^"]*"' \
+        | head -1 \
+        | sed 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
+    if [[ -n "$GATEWAY_TOKEN" ]]; then
+        info "Gateway auth token: extracted"
+    else
+        warn "Gateway auth token: not found (gateway may not have started yet)"
+    fi
+fi
+
 # Summary
 step "Setup Complete"
 echo ""
-echo "  Config:     $SCRIPT_DIR/.env"
-echo "  Version:    Claw $OPENCLAW_VERSION"
-echo "  Repo:       ${REPO:-'(not set)'}"
-echo "  Web UI:     http://localhost:3000"
+echo "  Config:      $SCRIPT_DIR/.env"
+echo "  Version:     Claw $OPENCLAW_VERSION"
+echo "  Repo:        ${REPO:-'(not set)'}"
+if [[ -n "$GATEWAY_TOKEN" ]]; then
+echo "  Web UI:      http://localhost:3000/?token=$GATEWAY_TOKEN"
+echo "  Auth Token:  $GATEWAY_TOKEN"
+else
+echo "  Web UI:      http://localhost:3000"
+fi
 echo "  Agent files: $SCRIPT_DIR/openclaw-home/workspace/"
-echo "  Logs:       $SCRIPT_DIR/logs/"
+echo "  Logs:        $SCRIPT_DIR/logs/"
+echo ""
+echo "  Next steps:"
+echo "    1. Open the Web UI URL above in your browser"
+echo "    2. Approve browser pairing:"
+echo "       docker exec zupee-claw openclaw devices approve --latest"
 echo ""
 echo "  To tear down: $SCRIPT_DIR/cleanup.sh"
 echo ""
