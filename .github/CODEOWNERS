@@ -1,0 +1,37 @@
+# CODEOWNERS for zupee-claw
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Each line is a file pattern followed by one or more owners.
+# Order matters — later patterns take precedence over earlier ones.
+
+# Default: catch-all
+*                       @ranjeetcao
+
+# CI/CD and GitHub configuration
+/.github/               @ranjeetcao
+
+# Docker / infrastructure
+/docker/                @ranjeetcao
+
+# Whitelisted host commands (security-critical)
+/bin/                   @ranjeetcao
+
+# SSH and host configuration (security-critical)
+/config/                @ranjeetcao
+
+# Setup and teardown scripts
+/setup.sh               @ranjeetcao
+/cleanup.sh             @ranjeetcao
+
+# Agent personality and LLM configuration (security-critical)
+/openclaw-home/         @ranjeetcao
+
+# Claude Code agent infrastructure (security-critical)
+/.claude/               @ranjeetcao
+/CLAUDE.md              @ranjeetcao
+
+# Environment configuration template
+/.env.example           @ranjeetcao
+
+# Security policy
+/SECURITY.md            @ranjeetcao
