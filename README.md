@@ -158,6 +158,33 @@ ls -la $WORKSPACE_DIR/$REPO
 
 This removes containers, images, volumes, SSH keys, and the host user. Agent data is optionally preserved.
 
+## Verification
+
+After running `setup.sh`, verify everything works:
+
+```bash
+# 1. Check containers are running
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep zupee
+
+# 2. Validate Docker Compose config
+docker compose -f docker/docker-compose.yml config --quiet
+
+# 3. Check Web UI health
+curl -sf http://localhost:3000/health
+
+# 4. Verify SSH gateway
+ssh openclaw-bot@localhost "service-status"
+
+# 5. Check ShellCheck passes
+shellcheck bin/*.sh setup.sh cleanup.sh
+
+# 6. Verify no personal data leaked
+grep -ri "your-real-name" . --include='*.md' --include='*.sh' --include='*.yml'
+
+# 7. Validate all JSON files
+find . -name '*.json' -not -path './.git/*' -exec python3 -c "import json,sys; json.load(open(sys.argv[1]))" {} \;
+```
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, conventions, and PR guidelines.
