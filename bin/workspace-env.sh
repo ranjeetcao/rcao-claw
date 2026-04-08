@@ -8,8 +8,8 @@ ENV_FILE="$SCRIPT_DIR/../.env"
 
 # Parse .env safely (grep+cut, NOT source — prevents code injection via .env)
 if [[ -f "$ENV_FILE" ]]; then
-    REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
-    OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+    REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+    OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 else
     REPO=""
     OPENCLAW_VERSION=""

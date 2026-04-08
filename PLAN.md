@@ -261,7 +261,7 @@ claude -p "$PROMPT" \
   --permission-mode dontAsk \
   --allowedTools '"Read" "Edit" "Write" "Glob" "Grep" "Bash(npm test *)" "Bash(npm run *)" "Bash(git diff *)" "Bash(git log *)" "Bash(git status)" "Bash(git add *)" "Bash(git commit *)"' \
   --disallowedTools '"Bash(curl *)" "Bash(wget *)" "Bash(rm -rf *)" "Bash(ssh *)" "Bash(sudo *)" "Bash(chmod *)" "Bash(chown *)" "Bash(kill *)" "Bash(pkill *)" "Bash(dd *)" "Bash(mkfs *)" "Bash(mount *)" "Bash(docker *)" "Bash(nc *)" "Bash(python -c *)" "Bash(python3 -c *)" "Bash(eval *)" "Bash(exec *)" "Bash(nohup *)" "Bash(crontab *)" "WebFetch" "WebSearch"' \
-  --max-turns 15 \
+  --max-turns 25 \
   --max-budget-usd 10.00 \
   2>&1 | tee -a "$LOGFILE"
 
@@ -609,7 +609,7 @@ SSH -> ssh-gateway.sh -> allowed-commands.conf
   +-- run-claude.sh        (locked-down Claude Code on f2p-root)
         |
         v
-      claude -p "..." --dontAsk --allowedTools --max-turns 15
+      claude -p "..." --dontAsk --allowedTools --max-turns 25
         |
         v
       ~/workspace/  (Read, Edit, Write, git, npm test)
@@ -626,7 +626,7 @@ SSH -> ssh-gateway.sh -> allowed-commands.conf
 | Script arg validation | Input sanitization | Injection attacks |
 | Claude --dontAsk | Tool whitelist mode | Unapproved tools |
 | Claude --disallowedTools | Tool blacklist | ssh, curl, rm, sudo, docker |
-| Claude --max-turns 15 | Execution limit | Runaway loops |
+| Claude --max-turns 25 | Execution limit | Runaway loops |
 | Claude --max-budget-usd | Cost cap | API cost overruns |
 | .claude/settings.json | Persistent deny rules | Bypass via flags |
 | rbash user | Restricted shell | Shell escapes |
