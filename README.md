@@ -104,6 +104,10 @@ All commands run via SSH gateway from the Claw container to the host.
 | `run-claude <prompt> [repo]` | Coding tasks (25 turns, $10 cap) |
 | `service-status` | Host health + list repos |
 
+## Slack Integration
+
+Claw connects to Slack via its native plugin using Socket Mode (real-time WebSocket). Traffic is routed through a Squid proxy that only allows `*.slack.com` and `*.slack-edge.com`. See [docs/slack-integration.md](docs/slack-integration.md) for setup.
+
 Default repo is set in `.env`. All commands accept an optional `[repo]` override.
 
 ## Adding Custom Commands

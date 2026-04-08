@@ -100,6 +100,8 @@ zupee-claw/                             # Claw's entire home
     └── openclaw.log                    # Claw gateway log
 ```
 
+**Note:** `MEMORY.md` and `memory/` are runtime files created by the agent during operation. They are gitignored and do not exist in the repository — they are created automatically when the agent first runs.
+
 ### Agent Workspace Files
 
 | File | Purpose | When loaded |
@@ -172,3 +174,40 @@ All configuration is managed through `.env`. See `.env.example` for available op
 | `REPO` | `my-project` | Default repository name under `$WORKSPACE_DIR/` |
 | `WORKSPACE_DIR` | `~/workspace` | Root directory where repos live |
 | `OLLAMA_MODEL` | `qwen3.5` | Ollama model for local inference |
+
+## Verification Checklist
+
+After running `setup.sh`, verify the deployment:
+
+```bash
+# Claw web UI accessible?
+curl -s http://localhost:3000/health
+
+# Ollama responding?
+docker compose -f docker/docker-compose.yml exec ollama ollama list
+
+# SSH gateway works for allowed commands?
+docker compose -f docker/docker-compose.yml exec openclaw ssh -i /openclaw/.ssh/id_ed25519 \
+  openclaw-bot@host.docker.internal "service-status"
+
+# Blocked command rejected?
+docker compose -f docker/docker-compose.yml exec openclaw ssh -i /openclaw/.ssh/id_ed25519 \
+  openclaw-bot@host.docker.internal "rm -rf /"
+# Should see: DENIED in logs/gateway.log
+
+# Logs flowing?
+tail -f logs/gateway.log
+tail -f logs/claude.log
+```
+
+- [ ] Claw web UI accessible at localhost:3000
+- [ ] Ollama model responding
+- [ ] SSH from container to host works for allowed commands
+- [ ] SSH gateway blocks non-whitelisted commands
+- [ ] SSH gateway blocks path traversal attempts
+- [ ] `run-claude.sh` operates on `$WORKSPACE_DIR` only
+- [ ] Claude Code cannot SSH, curl, wget, `rm -rf`
+- [ ] Claude Code cannot access WebFetch/WebSearch
+- [ ] All actions logged to `logs/`
+- [ ] Container restart preserves agent data (volumes)
+- [ ] Web UI not accessible from other machines (127.0.0.1 bind)
