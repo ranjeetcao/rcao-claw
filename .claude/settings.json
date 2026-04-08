@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-commit-secrets.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-commit-shellcheck.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-commit-security-config.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
