@@ -21,6 +21,15 @@ if [[ ! -f /home/openclaw/.openclaw/openclaw.json ]]; then
     echo "[entrypoint] WARNING: ~/.openclaw/openclaw.json not found. Is openclaw-home mounted?"
 fi
 
+# Harden personality files — the agent must not be able to rewrite its own identity/rules.
+# These files are owned by the host user (UID 1000), not the container user (UID 1001),
+# so the agent already cannot modify them. The chmod below is defense-in-depth for cases
+# where host permissions are misconfigured.
+for f in AGENTS.md SOUL.md USER.md IDENTITY.md TOOLS.md; do
+    chmod 444 "/home/openclaw/.openclaw/workspace/$f" 2>/dev/null || true
+done
+echo "[entrypoint] Personality files verified"
+
 # Wait for Ollama to be ready (healthcheck handles this, but belt-and-suspenders)
 echo "[entrypoint] Waiting for Ollama..."
 for i in $(seq 1 30); do
@@ -35,9 +44,13 @@ for i in $(seq 1 30); do
 done
 
 # Start Claw gateway (tee to both stdout for docker logs and file for persistence)
+# --bind custom: bind to 0.0.0.0 inside the container (safe — host port mapping is
+#   restricted to 127.0.0.1 in docker-compose.yml). Using "custom" instead of "lan"
+#   avoids ambiguity when the container has multiple Docker networks.
+# --force is intentionally omitted: it requires fuser/lsof (not in this image), and
+#   is unnecessary — Docker guarantees a clean process namespace on container start.
 echo "[entrypoint] Starting Claw gateway on :3000"
 openclaw gateway run \
-    --bind 0.0.0.0 \
+    --bind custom \
     --port 3000 \
-    --force \
     2>&1 | tee -a /openclaw/logs/openclaw.log
