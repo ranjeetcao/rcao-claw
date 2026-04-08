@@ -19,7 +19,7 @@ clean:
 	./cleanup.sh
 
 health:
-	@echo "=== OpenClaw ==="
+	@echo "=== Claw ==="
 	@curl -sf http://localhost:3000/health && echo " OK" || echo " FAIL"
 	@echo "=== Ollama ==="
 	@cd docker && docker compose exec ollama curl -sf http://localhost:11434/api/tags > /dev/null && echo " OK" || echo " FAIL"

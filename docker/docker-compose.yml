@@ -31,7 +31,7 @@ services:
     ports:
       - "127.0.0.1:3000:3000"       # Web UI - localhost only, not exposed to network
     volumes:
-      # OpenClaw config (read-only - agent cannot modify its own config)
+      # Claw config (read-only - agent cannot modify its own config)
       - ../openclaw-home/openclaw.json:/home/openclaw/.openclaw/openclaw.json:ro
 
       # Agent workspace personality files (read-only - agent cannot rewrite its own rules)

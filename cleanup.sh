@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# Zupee OpenClaw - End-to-End Cleanup
+# Zupee Claw - End-to-End Cleanup
 # Tears down everything provisioned by setup.sh
 # =============================================================================
 
@@ -25,7 +25,7 @@ step()  { echo -e "\n${GREEN}=== $* ===${NC}"; }
 
 echo ""
 echo -e "${RED}========================================${NC}"
-echo -e "${RED}  Zupee OpenClaw - Full Cleanup${NC}"
+echo -e "${RED}  Zupee Claw - Full Cleanup${NC}"
 echo -e "${RED}========================================${NC}"
 echo ""
 echo "This will remove:"

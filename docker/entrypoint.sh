@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "[entrypoint] Starting OpenClaw container..."
+echo "[entrypoint] Starting Claw container..."
 
 # Setup SSH key (copy to writable location with correct permissions)
 mkdir -p /home/openclaw/.ssh
@@ -34,8 +34,8 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-# Start OpenClaw gateway (tee to both stdout for docker logs and file for persistence)
-echo "[entrypoint] Starting OpenClaw gateway on :3000"
+# Start Claw gateway (tee to both stdout for docker logs and file for persistence)
+echo "[entrypoint] Starting Claw gateway on :3000"
 openclaw gateway run \
     --bind 0.0.0.0 \
     --port 3000 \

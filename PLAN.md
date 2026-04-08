@@ -1,13 +1,13 @@
-# Zupee OpenClaw - Secure Office Laptop Setup Plan
+# Zupee Claw - Secure Office Laptop Setup Plan
 
 ## Overview
 
-Run OpenClaw inside Docker on an office laptop with local Qwen 3.5 inference.
+Run Claw inside Docker on an office laptop with local Qwen 3.5 inference.
 The AI can only execute pre-approved scripts on the host via SSH, and can launch
 Claude Code in a locked-down mode for coding tasks on the dev workspace.
 
 **Key separation:**
-- `zupee-claw/` = OpenClaw's home (configs, agent data, sessions, memory, scripts, docker)
+- `zupee-claw/` = Claw's home (configs, agent data, sessions, memory, scripts, docker)
 - `~/workspace/` = actual development codebase (where Claude Code operates)
 
 ## Architecture
@@ -17,7 +17,7 @@ Claude Code in a locked-down mode for coding tasks on the dev workspace.
 |  DOCKER CONTAINER                                             |
 |                                                               |
 |  +-------------+     +-------------+     +-----------------+  |
-|  |  OpenClaw   |---->|   Qwen 3.5  |     | /openclaw/bin/  |  |
+|  |  Claw       |---->|   Qwen 3.5  |     | /openclaw/bin/  |  |
 |  |  Gateway    |     |   (Ollama)  |     | (ro mount from  |  |
 |  |  + Web UI   |     +-------------+     |  host)          |  |
 |  +------+------+                         +-----------------+  |
@@ -53,7 +53,7 @@ Claude Code in a locked-down mode for coding tasks on the dev workspace.
 ## Directory Structure
 
 ```
-zupee-claw/                         # OpenClaw's entire home
+zupee-claw/                         # Claw's entire home
 ├── PLAN.md                             # This file
 ├── bin/                                # Whitelisted scripts (mounted :ro)
 │   ├── allowed-commands.conf           # Allowlist of permitted commands
@@ -65,14 +65,14 @@ zupee-claw/                         # OpenClaw's entire home
 │   ├── deploy-staging.sh              # Deploy to staging
 │   └── service-status.sh              # Check service health
 ├── config/
-│   ├── openclaw.config.json            # OpenClaw gateway configuration
+│   ├── openclaw.config.json            # Claw gateway configuration
 │   ├── openclaw-docker-key             # SSH private key (generated)
 │   ├── openclaw-docker-key.pub         # SSH public key (generated)
 │   ├── authorized_keys                 # ForceCommand-restricted key
 │   ├── claude-settings.json            # Claude Code lockdown (copy to f2p-root)
 │   └── sshd_openclaw.conf             # Host SSH hardening config
 ├── openclaw-home/                      # Maps to ~/.openclaw inside container
-│   ├── openclaw.json                   # Main OpenClaw config
+│   ├── openclaw.json                   # Main Claw config
 │   ├── workspace/                      # Agent workspace (personality & memory)
 │   │   ├── AGENTS.md                   # Operating instructions & rules
 │   │   ├── SOUL.md                     # Persona, tone, boundaries
@@ -98,13 +98,13 @@ zupee-claw/                         # OpenClaw's entire home
 │   ├── credentials/                    # OAuth tokens, API keys
 │   └── skills/                         # Shared managed skills
 ├── docker/
-│   ├── Dockerfile                      # OpenClaw + SSH client
+│   ├── Dockerfile                      # Claw + SSH client
 │   ├── docker-compose.yml              # Full stack (openclaw + ollama)
 │   └── entrypoint.sh                   # Container startup
 └── logs/                               # Audit logs (mounted :rw)
     ├── gateway.log                     # SSH command log
     ├── claude.log                      # Claude Code execution log
-    └── openclaw.log                    # OpenClaw gateway log
+    └── openclaw.log                    # Claw gateway log
 
 ~/workspace/                   # Dev codebase (SEPARATE)
 ├── .claude/
@@ -308,9 +308,9 @@ services:
     ports:
       - "127.0.0.1:3000:3000"       # Web UI (localhost only)
     volumes:
-      # OpenClaw agent workspace (sessions, memory, agents)
+      # Claw agent workspace (sessions, memory, agents)
       - ../data:/openclaw/data:rw
-      # OpenClaw config (gateway config, model settings)
+      # Claw config (gateway config, model settings)
       - ../config/openclaw.config.json:/openclaw/config.json:ro
       # Whitelisted scripts (read-only for inspection)
       - ../bin:/openclaw/bin:ro
@@ -382,7 +382,7 @@ chmod 600 /tmp/openclaw-key
 # Add host to known_hosts (first-run)
 ssh-keyscan -H host.docker.internal >> ~/.ssh/known_hosts 2>/dev/null || true
 
-# Start OpenClaw gateway
+# Start Claw gateway
 exec openclaw gateway run \
   --bind 0.0.0.0 \
   --port 3000 \
@@ -390,7 +390,7 @@ exec openclaw gateway run \
   2>&1 | tee /openclaw/logs/openclaw.log
 ```
 
-### 3.4 OpenClaw Configuration (`config/openclaw.config.json`)
+### 3.4 Claw Configuration (`config/openclaw.config.json`)
 
 ```json
 {
@@ -530,7 +530,7 @@ docker compose up -d
 ### 5.3 Verification checklist
 
 ```bash
-# OpenClaw running?
+# Claw running?
 curl -s http://localhost:3000/health
 
 # Ollama responding?
@@ -555,7 +555,7 @@ tail -f zupee-claw/logs/gateway.log
 tail -f zupee-claw/logs/claude.log
 ```
 
-- [ ] OpenClaw web UI accessible at localhost:3000
+- [ ] Claw web UI accessible at localhost:3000
 - [ ] Qwen 3.5 responding via Ollama
 - [ ] SSH from container to host works for allowed commands
 - [ ] SSH gateway blocks non-whitelisted commands
@@ -573,10 +573,10 @@ tail -f zupee-claw/logs/claude.log
 You (browser)
   |
   v
-localhost:3000 (OpenClaw Web UI)
+localhost:3000 (Claw Web UI)
   |
   v
-OpenClaw Gateway (Docker) -- inference --> Ollama/Qwen 3.5 (Docker)
+Claw Gateway (Docker) -- inference --> Ollama/Qwen 3.5 (Docker)
   |
   | (needs host action)
   v

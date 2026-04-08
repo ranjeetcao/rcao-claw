@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Pin OpenClaw version - update deliberately, not automatically
+# Pin Claw version - update deliberately, not automatically
 ARG OPENCLAW_VERSION=2026.4.2
 RUN npm install -g openclaw@${OPENCLAW_VERSION}
 

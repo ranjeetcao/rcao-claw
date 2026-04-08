@@ -1,4 +1,4 @@
-# Zupee OpenClaw
+# Zupee Claw
 
 Secure, air-gapped AI development partner running inside Docker on an office laptop. Uses local Qwen 3.5 inference via Ollama and delegates coding tasks to Claude Code through a locked-down SSH gateway.
 
@@ -6,7 +6,7 @@ Secure, air-gapped AI development partner running inside Docker on an office lap
 
 - Docker & Docker Compose
 - macOS or Linux
-- 16 GB RAM minimum (8 GB for Ollama + 2 GB for OpenClaw)
+- 16 GB RAM minimum (8 GB for Ollama + 2 GB for Claw)
 
 ## Quickstart
 
@@ -42,7 +42,7 @@ make down
 
 ## Available Commands
 
-All commands run via SSH gateway from the OpenClaw container to the host.
+All commands run via SSH gateway from the Claw container to the host.
 
 | Command | Purpose |
 |---------|---------|
