@@ -8,11 +8,21 @@
 
 set -euo pipefail
 
+# Fail-closed: if the hook crashes, block the command rather than silently allow
+trap 'echo "BLOCKED: Secret scanning hook crashed unexpectedly"; exit 2' ERR
+
 # ---------------------------------------------------------------------------
 # 1. Read tool input and extract the command
 # ---------------------------------------------------------------------------
 INPUT="$(cat)"
-COMMAND="$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('command',''))" 2>/dev/null || true)"
+
+# Require python3 for JSON parsing — fail-closed if missing
+if ! command -v python3 &>/dev/null; then
+  echo "BLOCKED: python3 is required for secret scanning hook but not found"
+  exit 2
+fi
+
+COMMAND="$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('command',''))")"
 
 if [[ -z "$COMMAND" ]]; then
   exit 0
@@ -24,10 +34,10 @@ fi
 IS_COMMIT=false
 IS_ADD=false
 
-if echo "$COMMAND" | grep -qE '^\s*git\s+commit\b'; then
+if echo "$COMMAND" | grep -qE '\bgit\s+commit\b'; then
   IS_COMMIT=true
 fi
-if echo "$COMMAND" | grep -qE '^\s*git\s+add\b'; then
+if echo "$COMMAND" | grep -qE '\bgit\s+add\b'; then
   IS_ADD=true
 fi
 
@@ -92,11 +102,8 @@ scan_content() {
   fi
 
   # OpenAI keys: sk- followed by 20+ chars (but not sk-ant- which is Anthropic)
-  if echo "$content" | grep -qE 'sk-[A-Za-z0-9]{20,}' | grep -vq 'sk-ant-' 2>/dev/null; then
-    # More precise check: find sk- matches that are NOT sk-ant-
-    if echo "$content" | grep -oE 'sk-[A-Za-z0-9_-]{20,}' | grep -vq '^sk-ant-'; then
-      file_violations="${file_violations}  - Possible OpenAI key (sk-...) detected"$'\n'
-    fi
+  if echo "$content" | grep -oE 'sk-[A-Za-z0-9_-]{20,}' | grep -vq '^sk-ant-'; then
+    file_violations="${file_violations}  - Possible OpenAI key (sk-...) detected"$'\n'
   fi
 
   # AWS access keys
@@ -170,6 +177,11 @@ while IFS= read -r file; do
 
   if echo "$file" | grep -qiE '^config/.*key'; then
     VIOLATIONS="${VIOLATIONS}File: ${file}"$'\n'"  - Config key file staged for commit (likely contains key material)"$'\n'
+    continue
+  fi
+
+  # Skip files over 1MB to avoid hanging on large binaries/data
+  if [[ -f "$file" ]] && [[ $(wc -c < "$file" 2>/dev/null || echo 0) -gt 1048576 ]]; then
     continue
   fi
 

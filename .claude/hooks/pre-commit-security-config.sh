@@ -9,11 +9,20 @@
 
 set -euo pipefail
 
+# Fail-closed: if the hook crashes, block the command rather than silently allow
+trap 'echo "BLOCKED: Security config hook crashed unexpectedly"; exit 2' ERR
+
 # ---------------------------------------------------------------------------
 # 1. Read tool input and extract the command
 # ---------------------------------------------------------------------------
 INPUT="$(cat)"
-COMMAND="$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('command',''))" 2>/dev/null || true)"
+
+if ! command -v python3 &>/dev/null; then
+  echo "BLOCKED: python3 is required for security config hook but not found"
+  exit 2
+fi
+
+COMMAND="$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('command',''))")"
 
 if [[ -z "$COMMAND" ]]; then
   exit 0
@@ -22,7 +31,7 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Only act on git commit commands
 # ---------------------------------------------------------------------------
-if ! echo "$COMMAND" | grep -qE '^\s*git\s+commit\b'; then
+if ! echo "$COMMAND" | grep -qE '\bgit\s+commit\b'; then
   exit 0
 fi
 
