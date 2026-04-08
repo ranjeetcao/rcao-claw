@@ -7,7 +7,7 @@ The AI can only execute pre-approved scripts on the host via SSH, and can launch
 Claude Code in a locked-down mode for coding tasks on the dev workspace.
 
 **Key separation:**
-- `zupee-openclaw/` = OpenClaw's home (configs, agent data, sessions, memory, scripts, docker)
+- `zupee-claw/` = OpenClaw's home (configs, agent data, sessions, memory, scripts, docker)
 - `~/workspace/` = actual development codebase (where Claude Code operates)
 
 ## Architecture
@@ -23,9 +23,9 @@ Claude Code in a locked-down mode for coding tasks on the dev workspace.
 |  +------+------+                         +-----------------+  |
 |         |                                                     |
 |  Mounted volumes:                                             |
-|    ~/.openclaw/       -> zupee-openclaw/openclaw-home/  (rw)  |
-|    /openclaw/bin/     -> zupee-openclaw/bin/            (ro)  |
-|    /openclaw/logs/    -> zupee-openclaw/logs/           (rw)  |
+|    ~/.openclaw/       -> zupee-claw/openclaw-home/  (rw)  |
+|    /openclaw/bin/     -> zupee-claw/bin/            (ro)  |
+|    /openclaw/logs/    -> zupee-claw/logs/           (rw)  |
 |                                                               |
 +---------|-----------------------------------------------------+
           | SSH (host.docker.internal:22)
@@ -35,7 +35,7 @@ Claude Code in a locked-down mode for coding tasks on the dev workspace.
 +---------|-----------------------------------------------------+
 |  HOST MACHINE                                                 |
 |                                                               |
-|  zupee-openclaw/                                              |
+|  zupee-claw/                                              |
 |    bin/           -> whitelisted scripts                      |
 |    config/        -> ssh keys, host ssh config                |
 |    openclaw-home/ -> ~/.openclaw in container (agents,        |
@@ -53,7 +53,7 @@ Claude Code in a locked-down mode for coding tasks on the dev workspace.
 ## Directory Structure
 
 ```
-zupee-openclaw/                         # OpenClaw's entire home
+zupee-claw/                         # OpenClaw's entire home
 ├── PLAN.md                             # This file
 ├── bin/                                # Whitelisted scripts (mounted :ro)
 │   ├── allowed-commands.conf           # Allowlist of permitted commands
@@ -148,19 +148,19 @@ sudo usermod -aG $(stat -f '%Sg' ~/workspace) openclaw-bot
 ### 1.2 Create directory structure
 
 ```bash
-cd zupee-openclaw/
+cd zupee-claw/
 mkdir -p bin config data/{agents,sessions,memory,credentials} docker logs
 ```
 
 ### 1.3 Generate SSH keypair for Docker -> Host
 
 ```bash
-ssh-keygen -t ed25519 -f zupee-openclaw/config/openclaw-docker-key -N "" -C "openclaw-docker"
+ssh-keygen -t ed25519 -f zupee-claw/config/openclaw-docker-key -N "" -C "openclaw-docker"
 ```
 
 ### 1.4 Configure authorized_keys with ForceCommand
 
-Place in `zupee-openclaw/config/authorized_keys`:
+Place in `zupee-claw/config/authorized_keys`:
 
 ```
 command="/home/openclaw-bot/openclaw/bin/ssh-gateway.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA... openclaw-docker
@@ -169,14 +169,14 @@ command="/home/openclaw-bot/openclaw/bin/ssh-gateway.sh",no-port-forwarding,no-X
 Then symlink to the restricted user's home:
 
 ```bash
-sudo cp zupee-openclaw/config/authorized_keys /home/openclaw-bot/.ssh/authorized_keys
+sudo cp zupee-claw/config/authorized_keys /home/openclaw-bot/.ssh/authorized_keys
 sudo chown openclaw-bot:openclaw-bot /home/openclaw-bot/.ssh/authorized_keys
 sudo chmod 600 /home/openclaw-bot/.ssh/authorized_keys
 ```
 
 ### 1.5 Host SSH hardening
 
-Place in `zupee-openclaw/config/sshd_openclaw.conf`, then copy to `/etc/ssh/sshd_config.d/`:
+Place in `zupee-claw/config/sshd_openclaw.conf`, then copy to `/etc/ssh/sshd_config.d/`:
 
 ```
 Match User openclaw-bot
@@ -304,7 +304,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: zupee-openclaw
+    container_name: zupee-claw
     ports:
       - "127.0.0.1:3000:3000"       # Web UI (localhost only)
     volumes:
@@ -497,22 +497,22 @@ Sandbox is `off` because the Docker container IS the sandbox.
 
 ```bash
 # 1. Create host user & SSH config
-sudo cp zupee-openclaw/config/sshd_openclaw.conf /etc/ssh/sshd_config.d/
+sudo cp zupee-claw/config/sshd_openclaw.conf /etc/ssh/sshd_config.d/
 sudo systemctl reload sshd
 
 # 2. Generate SSH key
-ssh-keygen -t ed25519 -f zupee-openclaw/config/openclaw-docker-key -N "" -C "openclaw-docker"
+ssh-keygen -t ed25519 -f zupee-claw/config/openclaw-docker-key -N "" -C "openclaw-docker"
 
 # 3. Install authorized_keys
-sudo cp zupee-openclaw/config/authorized_keys /home/openclaw-bot/.ssh/authorized_keys
+sudo cp zupee-claw/config/authorized_keys /home/openclaw-bot/.ssh/authorized_keys
 sudo chown openclaw-bot:openclaw-bot /home/openclaw-bot/.ssh/authorized_keys
 
 # 4. Setup Claude Code permissions in dev workspace
 mkdir -p ~/workspace/.claude
-cp zupee-openclaw/claude-settings.json ~/workspace/.claude/settings.json
+cp zupee-claw/claude-settings.json ~/workspace/.claude/settings.json
 
 # 5. Build & start
-cd zupee-openclaw/docker
+cd zupee-claw/docker
 docker compose up -d --build
 
 # 6. Pull Qwen 3.5 model
@@ -522,7 +522,7 @@ docker compose exec ollama ollama pull qwen3.5
 ### 5.2 Daily startup
 
 ```bash
-cd zupee-openclaw/docker
+cd zupee-claw/docker
 docker compose up -d
 # Web UI at http://localhost:3000
 ```
@@ -551,8 +551,8 @@ claude -p "run curl google.com" --permission-mode dontAsk
 # Should fail / be denied
 
 # Logs flowing?
-tail -f zupee-openclaw/logs/gateway.log
-tail -f zupee-openclaw/logs/claude.log
+tail -f zupee-claw/logs/gateway.log
+tail -f zupee-claw/logs/claude.log
 ```
 
 - [ ] OpenClaw web UI accessible at localhost:3000
@@ -563,7 +563,7 @@ tail -f zupee-openclaw/logs/claude.log
 - [ ] run-claude.sh operates on ~/workspace only
 - [ ] Claude Code cannot SSH, curl, wget, rm -rf
 - [ ] Claude Code cannot access WebFetch/WebSearch
-- [ ] All actions logged to zupee-openclaw/logs/
+- [ ] All actions logged to zupee-claw/logs/
 - [ ] Container restart preserves agent data (data/ volume)
 - [ ] Web UI not accessible from other machines (127.0.0.1 bind)
 

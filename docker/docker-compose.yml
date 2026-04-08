@@ -25,7 +25,7 @@ services:
       dockerfile: Dockerfile
       args:
         OPENCLAW_VERSION: ${OPENCLAW_VERSION}
-    container_name: zupee-openclaw
+    container_name: zupee-claw
     env_file:
       - ../.env
     ports:

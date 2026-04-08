@@ -252,7 +252,7 @@ step "Verification"
 
 echo ""
 # Check containers
-if docker ps --format '{{.Names}}' | grep -q zupee-openclaw; then
+if docker ps --format '{{.Names}}' | grep -q zupee-claw; then
     info "OpenClaw container: running"
 else
     warn "OpenClaw container: not running"
