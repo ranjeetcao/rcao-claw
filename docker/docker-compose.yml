@@ -59,14 +59,21 @@ services:
       - ../logs:/openclaw/logs:rw
     environment:
       - OLLAMA_HOST=http://ollama:11434
+      - HTTPS_PROXY=http://squid:3128
+      - NO_PROXY=ollama
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       ollama:
         condition: service_healthy
+      squid:
+        condition: service_healthy
     networks:
       - isolated
       - host-access
+      - squid-net
     deploy:
       resources:
         limits:
@@ -79,6 +86,29 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  squid:
+    image: ubuntu/squid:6.6-24.04_edge
+    container_name: zupee-squid
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+      - ../logs/squid:/var/log/squid:rw
+    ports:
+      - "127.0.0.1:3128:3128"
+    networks:
+      - squid-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "squidclient -h 127.0.0.1 -p 3128 mgr:info 2>&1 | grep -q 'Squid Object Cache'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   ollama-models:
@@ -93,3 +123,7 @@ networks:
   host-access:
     driver: bridge
     internal: true
+
+  # Network for Squid proxy (needs internet for Slack API)
+  squid-net:
+    driver: bridge

@@ -67,3 +67,18 @@ ssh openclaw-bot@host.docker.internal "run-claude '<prompt>' <repo>"
 ```
 Claude Code is locked down: no internet, no shell escape, no bulk delete.
 Use it for focused coding tasks, not for exploration or planning.
+
+## Slack Communication
+
+Slack is a **native channel** — you receive and send messages through OpenClaw's built-in Slack integration (Socket Mode). No SSH commands are needed for Slack.
+
+**When to use Slack:**
+- Status updates on task progress (starting, blocked, done)
+- Asking questions when you need human input
+- Sharing PR links or test results
+
+**When NOT to use Slack:**
+- Don't spam channels with every minor step
+- Don't send messages more than once per task phase (plan, implement, review)
+- Don't use Slack for debugging output — use logs instead
+- Keep messages professional and concise
