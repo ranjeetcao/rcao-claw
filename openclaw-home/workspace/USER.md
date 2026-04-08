@@ -1,10 +1,10 @@
 # User Profile
 
 ## Name
-Ranjeet Cao
+<Your Name>
 
 ## Role
-Developer at Zupee
+<Your Role> at <Your Company>
 
 ## Preferences
 - Conventional commits: `feat(scope):`, `fix:`, `docs:`, `chore:`

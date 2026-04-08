@@ -21,8 +21,20 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 # Parse .env safely (no source — prevents code injection)
-OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+REPO=$(grep '^REPO=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+_WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+OLLAMA_MODEL=$(grep '^OLLAMA_MODEL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+
+# Resolve WORKSPACE_DIR (expand ~ to $HOME), fallback to $HOME/workspace
+if [[ -n "${_WORKSPACE_DIR:-}" ]]; then
+    WORKSPACE_BASE="${_WORKSPACE_DIR/#\~/$HOME}"
+else
+    WORKSPACE_BASE="$HOME/workspace"
+fi
+
+# Fallback for OLLAMA_MODEL
+OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.5}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -209,7 +221,7 @@ fi
 
 step "Claude Code workspace setup"
 
-WORKSPACE_DIR="$HOME/workspace"
+WORKSPACE_DIR="$WORKSPACE_BASE"
 if [[ -n "$REPO" ]]; then
     WORKSPACE_DIR="$WORKSPACE_DIR/$REPO"
 fi
@@ -245,13 +257,13 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
 
     # Pull Qwen model
     echo ""
-    read -rp "Pull Qwen 3.5 model now? (this may take a while) [y/N] " confirm
+    read -rp "Pull $OLLAMA_MODEL model now? (this may take a while) [y/N] " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        info "Pulling Qwen 3.5... (this may take several minutes)"
-        docker compose exec ollama ollama pull qwen3.5
-        info "Qwen 3.5 ready"
+        info "Pulling $OLLAMA_MODEL... (this may take several minutes)"
+        docker compose exec ollama ollama pull "$OLLAMA_MODEL"
+        info "$OLLAMA_MODEL ready"
     else
-        warn "Pull later with: docker compose exec ollama ollama pull qwen3.5"
+        warn "Pull later with: docker compose exec ollama ollama pull $OLLAMA_MODEL"
     fi
 
     cd "$SCRIPT_DIR"
