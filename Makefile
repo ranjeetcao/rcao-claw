@@ -1,0 +1,27 @@
+.PHONY: setup up down logs status clean health
+
+setup:
+	./setup.sh
+
+up:
+	cd docker && docker compose up -d
+
+down:
+	cd docker && docker compose down
+
+logs:
+	cd docker && docker compose logs -f
+
+status:
+	ssh openclaw-bot@localhost "service-status"
+
+clean:
+	./cleanup.sh
+
+health:
+	@echo "=== OpenClaw ==="
+	@curl -sf http://localhost:3000/health && echo " OK" || echo " FAIL"
+	@echo "=== Ollama ==="
+	@cd docker && docker compose exec ollama curl -sf http://localhost:11434/api/tags > /dev/null && echo " OK" || echo " FAIL"
+	@echo "=== SSH Gateway ==="
+	@ssh openclaw-bot@localhost "service-status" > /dev/null 2>&1 && echo " OK" || echo " FAIL"

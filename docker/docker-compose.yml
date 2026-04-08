@@ -1,0 +1,95 @@
+services:
+  ollama:
+    image: ollama/ollama:0.6.2
+    container_name: zupee-ollama
+    volumes:
+      - ollama-models:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: "4"
+    networks:
+      - isolated
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  openclaw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        OPENCLAW_VERSION: ${OPENCLAW_VERSION}
+    container_name: zupee-openclaw
+    env_file:
+      - ../.env
+    ports:
+      - "127.0.0.1:3000:3000"       # Web UI - localhost only, not exposed to network
+    volumes:
+      # OpenClaw config (read-only - agent cannot modify its own config)
+      - ../openclaw-home/openclaw.json:/home/openclaw/.openclaw/openclaw.json:ro
+
+      # Agent workspace personality files (read-only - agent cannot rewrite its own rules)
+      - ../openclaw-home/workspace/AGENTS.md:/home/openclaw/.openclaw/workspace/AGENTS.md:ro
+      - ../openclaw-home/workspace/SOUL.md:/home/openclaw/.openclaw/workspace/SOUL.md:ro
+      - ../openclaw-home/workspace/USER.md:/home/openclaw/.openclaw/workspace/USER.md:ro
+      - ../openclaw-home/workspace/IDENTITY.md:/home/openclaw/.openclaw/workspace/IDENTITY.md:ro
+      - ../openclaw-home/workspace/TOOLS.md:/home/openclaw/.openclaw/workspace/TOOLS.md:ro
+
+      # Agent writable data (memory, sessions, skills, credentials)
+      - ../openclaw-home/workspace/MEMORY.md:/home/openclaw/.openclaw/workspace/MEMORY.md:rw
+      - ../openclaw-home/workspace/memory:/home/openclaw/.openclaw/workspace/memory:rw
+      - ../openclaw-home/workspace/skills:/home/openclaw/.openclaw/workspace/skills:rw
+      - ../openclaw-home/agents:/home/openclaw/.openclaw/agents:rw
+      - ../openclaw-home/credentials:/home/openclaw/.openclaw/credentials:ro
+      - ../openclaw-home/skills:/home/openclaw/.openclaw/skills:rw
+
+      # Whitelisted scripts (read-only - container can see but not modify)
+      - ../bin:/openclaw/bin:ro
+
+      # SSH private key for host access (read-only)
+      - ../config/openclaw-docker-key:/openclaw/.ssh/id_ed25519:ro
+
+      # Audit logs (read-write)
+      - ../logs:/openclaw/logs:rw
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - isolated
+      - host-access
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  ollama-models:
+
+networks:
+  # Internal network - no outbound internet access
+  isolated:
+    driver: bridge
+    internal: true
+
+  # Network for SSH access to host only (openclaw container)
+  host-access:
+    driver: bridge
+    internal: true

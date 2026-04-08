@@ -1,0 +1,20 @@
+# Environment - NEVER commit
+.env
+
+# SSH keys - NEVER commit
+config/openclaw-docker-key
+config/openclaw-docker-key.pub
+
+# Runtime data
+openclaw-home/agents/
+openclaw-home/credentials/
+openclaw-home/workspace/memory/
+openclaw-home/workspace/MEMORY.md
+
+# Logs
+logs/*.log
+
+# Rate limit files (runtime)
+*.rate-limit
+*.rate-limit.lock
+*.rate-limit.tmp.*

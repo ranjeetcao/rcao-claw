@@ -1,0 +1,190 @@
+#!/bin/bash
+set -euo pipefail
+
+# =============================================================================
+# Zupee OpenClaw - End-to-End Cleanup
+# Tears down everything provisioned by setup.sh
+# =============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Parse .env safely (no source — prevents code injection)
+ENV_FILE="$SCRIPT_DIR/.env"
+OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+info()  { echo -e "${GREEN}[+]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
+error() { echo -e "${RED}[x]${NC} $*"; }
+step()  { echo -e "\n${GREEN}=== $* ===${NC}"; }
+
+echo ""
+echo -e "${RED}========================================${NC}"
+echo -e "${RED}  Zupee OpenClaw - Full Cleanup${NC}"
+echo -e "${RED}========================================${NC}"
+echo ""
+echo "This will remove:"
+echo "  - Docker containers (zupee-openclaw, zupee-ollama)"
+echo "  - Docker images and volumes"
+echo "  - SSH key, authorized_keys, sshd config"
+echo "  - Host user: openclaw-bot"
+echo "  - Claude Code settings from workspace"
+echo ""
+echo -e "${YELLOW}Agent data (openclaw-home/) and logs will be KEPT unless you choose to delete them.${NC}"
+echo ""
+read -rp "Proceed with cleanup? [y/N] " confirm
+if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "Aborted."
+    exit 0
+fi
+
+# --- Stop & remove Docker containers ----------------------------------------
+
+step "Docker cleanup"
+
+if docker compose -f "$SCRIPT_DIR/docker/docker-compose.yml" ps -q 2>/dev/null | grep -q .; then
+    docker compose -f "$SCRIPT_DIR/docker/docker-compose.yml" down --rmi local --volumes --remove-orphans
+    info "Containers, images, and volumes removed"
+else
+    warn "No running containers found"
+    # Still try to clean up
+    docker compose -f "$SCRIPT_DIR/docker/docker-compose.yml" down --rmi local --volumes --remove-orphans 2>/dev/null || true
+fi
+
+# Remove dangling images
+docker image prune -f --filter "label=com.docker.compose.project=docker" 2>/dev/null || true
+info "Docker cleanup done"
+
+# --- Remove SSH config -------------------------------------------------------
+
+step "SSH cleanup"
+
+SSHD_CONF="/etc/ssh/sshd_config.d/openclaw.conf"
+if [[ -f "$SSHD_CONF" ]]; then
+    read -rp "Remove SSH hardening config ($SSHD_CONF)? [y/N] " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        sudo rm -f "$SSHD_CONF"
+        if [[ "$(uname)" != "Darwin" ]]; then
+            sudo systemctl reload sshd 2>/dev/null || sudo service sshd reload 2>/dev/null || true
+        fi
+        info "SSH config removed"
+    else
+        warn "Kept $SSHD_CONF"
+    fi
+else
+    info "No SSH config found at $SSHD_CONF"
+fi
+
+# --- Remove SSH key ----------------------------------------------------------
+
+SSH_KEY="$SCRIPT_DIR/config/openclaw-docker-key"
+if [[ -f "$SSH_KEY" ]]; then
+    read -rp "Remove SSH keypair? [y/N] " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        rm -f "$SSH_KEY" "$SSH_KEY.pub"
+        info "SSH keypair removed"
+    else
+        warn "Kept SSH keypair"
+    fi
+else
+    info "No SSH keypair found"
+fi
+
+# --- Remove host user --------------------------------------------------------
+
+step "Host user cleanup"
+
+OPENCLAW_USER="openclaw-bot"
+if id "$OPENCLAW_USER" &>/dev/null; then
+    read -rp "Remove user '$OPENCLAW_USER' and their home directory? [y/N] " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        if [[ "$(uname)" == "Darwin" ]]; then
+            OPENCLAW_HOME=$(dscl . -read /Users/$OPENCLAW_USER NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+            sudo dscl . -delete /Users/$OPENCLAW_USER
+            if [[ -n "$OPENCLAW_HOME" ]] && [[ -d "$OPENCLAW_HOME" ]]; then
+                sudo rm -rf "$OPENCLAW_HOME"
+            fi
+            info "User removed (macOS)"
+        else
+            sudo userdel -r "$OPENCLAW_USER" 2>/dev/null || sudo userdel "$OPENCLAW_USER"
+            info "User removed (Linux)"
+        fi
+    else
+        warn "Kept user '$OPENCLAW_USER'"
+    fi
+else
+    info "User '$OPENCLAW_USER' does not exist"
+fi
+
+# --- Remove Claude Code settings from workspace ------------------------------
+
+step "Claude Code workspace cleanup"
+
+WORKSPACE_DIR="$HOME/workspace"
+if [[ -n "$REPO" ]]; then
+    WORKSPACE_DIR="$WORKSPACE_DIR/$REPO"
+fi
+
+CLAUDE_SETTINGS="$WORKSPACE_DIR/.claude/settings.json"
+if [[ -f "$CLAUDE_SETTINGS" ]]; then
+    read -rp "Remove Claude Code settings from $WORKSPACE_DIR/.claude/? [y/N] " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        rm -f "$CLAUDE_SETTINGS"
+        rmdir "$WORKSPACE_DIR/.claude" 2>/dev/null || true
+        info "Claude settings removed"
+    else
+        warn "Kept Claude settings"
+    fi
+else
+    info "No Claude settings found at $CLAUDE_SETTINGS"
+fi
+
+# --- Agent data & logs (optional) -------------------------------------------
+
+step "Agent data & logs"
+
+if [[ -d "$SCRIPT_DIR/openclaw-home/workspace" ]]; then
+    echo ""
+    echo "Agent data includes: sessions, memory, skills, credentials"
+    echo "Location: $SCRIPT_DIR/openclaw-home/"
+    read -rp "Delete agent data (openclaw-home/)? This is IRREVERSIBLE. [y/N] " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        read -rp "Are you sure? Type 'DELETE' to confirm: " confirm2
+        if [[ "$confirm2" == "DELETE" ]]; then
+            rm -rf "$SCRIPT_DIR/openclaw-home/agents"
+            rm -rf "$SCRIPT_DIR/openclaw-home/credentials"
+            rm -rf "$SCRIPT_DIR/openclaw-home/skills"
+            rm -rf "$SCRIPT_DIR/openclaw-home/workspace/memory"
+            info "Agent runtime data deleted (workspace template files kept)"
+        else
+            warn "Kept agent data"
+        fi
+    else
+        warn "Kept agent data"
+    fi
+fi
+
+if [[ -d "$SCRIPT_DIR/logs" ]] && ls "$SCRIPT_DIR/logs"/*.log &>/dev/null 2>&1; then
+    read -rp "Delete log files? [y/N] " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        rm -f "$SCRIPT_DIR/logs"/*.log
+        info "Logs deleted"
+    else
+        warn "Kept logs"
+    fi
+fi
+
+# --- Summary -----------------------------------------------------------------
+
+step "Cleanup Complete"
+echo ""
+echo "  Removed: Docker containers, images, volumes"
+echo "  Remaining files in: $SCRIPT_DIR/"
+echo ""
+echo "  To set up again: $SCRIPT_DIR/setup.sh"
+echo ""
