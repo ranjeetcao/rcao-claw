@@ -113,6 +113,8 @@ zupee-claw/                             # Claw's entire home
 | `memory/YYYY-MM-DD.md` | Daily memory log | Reads today + yesterday |
 | `skills/<name>/SKILL.md` | Custom skills for this agent | On skill invocation |
 
+> **Note:** `MEMORY.md` and `memory/` files are created at runtime by the agent during its first session. They do not ship with the repository.
+
 ## Data Flow
 
 ```
@@ -135,7 +137,7 @@ SSH -> ssh-gateway.sh -> allowed-commands.conf
   +-- run-claude.sh        (locked-down Claude Code on repo)
         |
         v
-      claude -p "..." --dontAsk --allowedTools --max-turns 15
+      claude -p "..." --dontAsk --allowedTools --max-turns 25
         |
         v
       $WORKSPACE_DIR/$REPO  (Read, Edit, Write, git, npm test)

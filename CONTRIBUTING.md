@@ -6,7 +6,7 @@ Thanks for your interest in contributing! This guide covers how to set up the pr
 
 1. **Clone the repo:**
    ```bash
-   git clone https://github.com/<your-org>/zupee-claw.git
+   git clone https://github.com/zupee-labs/zupee-claw.git
    cd zupee-claw
    ```
 
