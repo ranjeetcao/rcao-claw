@@ -55,7 +55,7 @@ Claude Code in a locked-down mode for coding tasks on the dev workspace.
 |  Squid forward proxy on 127.0.0.1:3128                        |
 |  ACL: ONLY *.slack.com + *.slack-edge.com, port 443           |
 |  zupee-claw joins squid-net (HTTPS_PROXY=http://squid:3128)  |
-|  OpenClaw's native Slack plugin uses Socket Mode via proxy    |
+|  Claw's native Slack plugin uses Socket Mode via proxy        |
 |  Ollama does NOT join squid-net (stays air-gapped)            |
 +---------------------------------------------------------------+
 ```
@@ -415,8 +415,9 @@ exec openclaw gateway run \
   },
   "agents": {
     "defaults": {
+      "workspace": "~/.openclaw/workspace",
       "sandbox": {
-        "mode": "off"
+        "mode": "all"
       }
     }
   },
@@ -429,16 +430,20 @@ exec openclaw gateway run \
     }
   },
   "tools": {
-    "allow": ["exec", "read", "write", "edit"],
-    "deny": ["browser", "canvas"],
+    "allow": ["read", "write", "edit", "message"],
+    "deny": ["exec", "bash", "process", "browser", "canvas"],
     "elevated": {
       "enabled": false
+    }
+  },
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "mode": "socket"
     }
   }
 }
 ```
-
-Sandbox is `off` because the Docker container IS the sandbox.
 
 ## Phase 4: Claude Code Lockdown for f2p-root
 
@@ -631,7 +636,7 @@ SSH -> ssh-gateway.sh -> allowed-commands.conf
 | Squid proxy ACL | Only *.slack.com allowed | Internet access beyond Slack |
 | Squid port restriction | HTTPS only (port 443) | HTTP/non-standard port access |
 | HTTPS_PROXY + NO_PROXY | Container routes Slack via Squid, Ollama stays isolated | Proxy bypass |
-| Native Socket Mode | Real-time Slack via OpenClaw plugin (no custom scripts) | Polling latency |
+| Native Socket Mode | Real-time Slack via Claw plugin (no custom scripts) | Polling latency |
 
 ## Risk Assessment
 

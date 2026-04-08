@@ -51,6 +51,8 @@ step "Creating directories"
 
 mkdir -p "$SCRIPT_DIR/logs"
 mkdir -p "$SCRIPT_DIR/logs/squid"
+# Squid runs as proxy user (UID 13) inside container — needs write access to mounted log dir
+chmod 777 "$SCRIPT_DIR/logs/squid"
 mkdir -p "$SCRIPT_DIR/openclaw-home/agents/main/sessions"
 mkdir -p "$SCRIPT_DIR/openclaw-home/credentials"
 mkdir -p "$SCRIPT_DIR/openclaw-home/skills"

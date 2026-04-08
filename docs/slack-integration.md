@@ -1,6 +1,6 @@
 # Slack Integration
 
-Claw connects to Slack using OpenClaw's **native Slack plugin** with Socket Mode (real-time WebSocket). All traffic is routed through a Squid forward proxy that whitelists only `*.slack.com` domains.
+Claw connects to Slack using its **native Slack plugin** with Socket Mode (real-time WebSocket). All traffic is routed through a Squid forward proxy that whitelists only `*.slack.com` and `*.slack-edge.com` domains.
 
 ## Architecture
 
@@ -17,7 +17,7 @@ Slack API (REST + Socket Mode WebSocket)
 ```
 
 **Key points:**
-- OpenClaw's native Slack plugin handles all communication (real-time via Socket Mode)
+- Claw's native Slack plugin handles all communication (real-time via Socket Mode)
 - The `zupee-claw` container joins `squid-net` and uses `HTTPS_PROXY` to reach Squid
 - Squid ACL is the security boundary — only `*.slack.com` + `*.slack-edge.com` allowed
 - `NO_PROXY=ollama` ensures Ollama traffic stays on the isolated network
@@ -77,7 +77,7 @@ Already configured in the default `openclaw.json`:
 make up
 ```
 
-Squid and OpenClaw start together. OpenClaw waits for Squid to be healthy before starting.
+Squid and Claw start together. Claw waits for Squid to be healthy before starting.
 
 ## Verification
 
@@ -107,7 +107,8 @@ Once running, Slack events should appear in the Claw Web UI in real-time. Send a
 | `NO_PROXY` | Ollama traffic stays on isolated network |
 | Docker network isolation | Ollama does NOT join `squid-net` |
 | Proxy-only internet | Container has no direct internet — only through Squid |
-| Slack bot scopes | Minimal: `chat:write`, `channels:history`, `channels:read`, `connections:write` |
+| Slack bot scopes | Minimal: `chat:write`, `channels:history`, `channels:read` |
+| Slack app-level scope | `connections:write` (required for Socket Mode) |
 | Audit trail | `logs/squid/access.log` for all proxy requests |
 
 ### What Claw CANNOT Do
@@ -126,7 +127,7 @@ Once running, Slack events should appear in the Claw Web UI in real-time. Send a
    grep SLACK .env
    ```
 2. Verify Socket Mode is enabled in your Slack app settings
-3. Check OpenClaw logs for connection errors:
+3. Check Claw logs for connection errors:
    ```bash
    make logs
    ```

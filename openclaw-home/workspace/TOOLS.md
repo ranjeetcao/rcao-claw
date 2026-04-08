@@ -49,10 +49,10 @@ See AGENTS.md for the full commands reference table.
 
 ## Slack
 
-Slack is connected via OpenClaw's **native plugin** using Socket Mode (WebSocket). You can send messages, read channels, and react — all through the gateway. No SSH commands needed.
+Slack is connected via Claw's **native plugin** using Socket Mode (WebSocket). You can send messages, read channels, and react — all through the gateway. No SSH commands needed.
 
 ### How it works
-- OpenClaw connects to Slack via Socket Mode (real-time WebSocket)
+- Claw connects to Slack via Socket Mode (real-time WebSocket)
 - All Slack traffic is proxied through Squid (`HTTPS_PROXY=http://squid:3128`)
 - Only `*.slack.com` and `*.slack-edge.com` domains are allowed (Squid ACL)
 - HTTPS only (port 443)
@@ -62,7 +62,7 @@ Slack is connected via OpenClaw's **native plugin** using Socket Mode (WebSocket
 - Send messages to channels
 - Read channel history and threads
 - React to messages
-- Receive real-time events (mentions, DMs, channel messages)
+- Receive real-time events (mentions, channel messages)
 
 ### Security
 - Only `*.slack.com` + `*.slack-edge.com` allowed (Squid ACL)

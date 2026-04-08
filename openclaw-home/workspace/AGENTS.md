@@ -70,7 +70,7 @@ Use it for focused coding tasks, not for exploration or planning.
 
 ## Slack Communication
 
-Slack is a **native channel** — you receive and send messages through OpenClaw's built-in Slack integration (Socket Mode). No SSH commands are needed for Slack.
+Slack is a **native channel** — you receive and send messages through Claw's built-in Slack integration (Socket Mode). No SSH commands are needed for Slack.
 
 **When to use Slack:**
 - Status updates on task progress (starting, blocked, done)
