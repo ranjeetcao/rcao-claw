@@ -28,13 +28,13 @@ See AGENTS.md for the full commands reference table.
 
 ### Typical task flow
 ```
-1. git-status f2p-root                    # check current state
-2. git-pull f2p-root                      # get latest
-3. run-claude "read the auth module and create a plan for adding refresh token rotation" f2p-root
+1. git-status my-project                    # check current state
+2. git-pull my-project                      # get latest
+3. run-claude "read the auth module and create a plan for adding refresh token rotation" my-project
 4. [review the plan with agents]
 5. [address review comments]
-6. run-claude "implement refresh token rotation following the approved plan. create feature branch, write tests, use conventional commits" f2p-root
-7. run-tests f2p-root                     # verify
+6. run-claude "implement refresh token rotation following the approved plan. create feature branch, write tests, use conventional commits" my-project
+7. run-tests my-project                     # verify
 8. [launch review agents]
 9. [fix review comments]
 10. [create PR]

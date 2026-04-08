@@ -1,0 +1,42 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+      - name: Run ShellCheck on bin/ scripts
+        run: shellcheck bin/*.sh
+      - name: Run ShellCheck on setup/cleanup
+        run: shellcheck setup.sh cleanup.sh
+
+  yaml-lint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yamllint
+        run: pip install yamllint
+      - name: Lint docker-compose.yml
+        run: yamllint -d relaxed docker/docker-compose.yml
+
+  json-validate:
+    name: JSON Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate all JSON files
+        run: |
+          find . -name '*.json' -not -path './.git/*' | while read -r f; do
+            echo "Validating: $f"
+            python3 -c "import json; json.load(open('$f'))"
+          done

@@ -12,6 +12,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
 REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+_WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+
+# Resolve WORKSPACE_DIR (expand ~ to $HOME), fallback to $HOME/workspace
+if [[ -n "${_WORKSPACE_DIR:-}" ]]; then
+    WORKSPACE_BASE="${_WORKSPACE_DIR/#\~/$HOME}"
+else
+    WORKSPACE_BASE="$HOME/workspace"
+fi
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -57,7 +65,7 @@ else
 fi
 
 # Remove dangling images
-docker image prune -f --filter "label=com.docker.compose.project=docker" 2>/dev/null || true
+docker image prune -f --filter "label=com.docker.compose.project=zupee-claw" 2>/dev/null || true
 info "Docker cleanup done"
 
 # --- Remove SSH config -------------------------------------------------------
@@ -125,7 +133,7 @@ fi
 
 step "Claude Code workspace cleanup"
 
-WORKSPACE_DIR="$HOME/workspace"
+WORKSPACE_DIR="$WORKSPACE_BASE"
 if [[ -n "$REPO" ]]; then
     WORKSPACE_DIR="$WORKSPACE_DIR/$REPO"
 fi
