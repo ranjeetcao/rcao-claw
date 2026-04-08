@@ -46,3 +46,26 @@ See AGENTS.md for the full commands reference table.
 - Be explicit about branch: "create a feature branch named feat/refresh-tokens"
 - Ask for tests: "include unit tests following existing test patterns"
 - Ask for conventional commits: "commit with conventional commit format"
+
+## Slack
+
+Slack is connected via Claw's **native plugin** using Socket Mode (WebSocket). You can send messages, read channels, and react — all through the gateway. No SSH commands needed.
+
+### How it works
+- Claw connects to Slack via Socket Mode (real-time WebSocket)
+- All Slack traffic is proxied through Squid (`HTTPS_PROXY=http://squid:3128`)
+- Only `*.slack.com` and `*.slack-edge.com` domains are allowed (Squid ACL)
+- HTTPS only (port 443)
+- Audit trail: `logs/squid/access.log` for all proxy requests
+
+### Capabilities
+- Send messages to channels
+- Read channel history and threads
+- React to messages
+- Receive real-time events (mentions, channel messages)
+
+### Security
+- Only `*.slack.com` + `*.slack-edge.com` allowed (Squid ACL)
+- HTTPS only (port 443)
+- Ollama stays fully air-gapped (does not use the proxy)
+- All proxy requests logged to `logs/squid/access.log`

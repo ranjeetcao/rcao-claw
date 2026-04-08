@@ -8,8 +8,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Parse .env safely (no source — prevents code injection)
+# Ensure .env exists (copy from example if missing)
 ENV_FILE="$SCRIPT_DIR/.env"
+if [[ ! -f "$ENV_FILE" ]]; then
+    if [[ -f "$SCRIPT_DIR/.env.example" ]]; then
+        cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
+        echo "Created .env from .env.example — edit it to customize."
+    else
+        echo "Error: .env not found and no .env.example to copy from." >&2
+        exit 1
+    fi
+fi
+
+# Parse .env safely (no source — prevents code injection)
 OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 REPO=$(grep '^REPO=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 _WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
@@ -62,6 +73,9 @@ info "SSH tools available"
 step "Creating directories"
 
 mkdir -p "$SCRIPT_DIR/logs"
+mkdir -p "$SCRIPT_DIR/logs/squid"
+# Squid runs as proxy user (UID 13) inside container — needs write access to mounted log dir
+chmod 777 "$SCRIPT_DIR/logs/squid"
 mkdir -p "$SCRIPT_DIR/openclaw-home/agents/main/sessions"
 mkdir -p "$SCRIPT_DIR/openclaw-home/credentials"
 mkdir -p "$SCRIPT_DIR/openclaw-home/skills"
@@ -281,6 +295,29 @@ if curl -sf http://localhost:3000/health &>/dev/null; then
     info "Web UI: http://localhost:3000 (healthy)"
 else
     warn "Web UI: not responding yet (may still be starting)"
+fi
+
+# Check Squid proxy
+if docker ps --format '{{.Names}}' | grep -q zupee-squid; then
+    info "Squid proxy: running"
+    if curl -sf --proxy http://127.0.0.1:3128 --max-time 5 https://slack.com/api/api.test &>/dev/null; then
+        info "Squid proxy: Slack API reachable"
+    else
+        warn "Squid proxy: Slack API not reachable (may still be starting)"
+    fi
+else
+    warn "Squid proxy: not running"
+fi
+
+# Check Slack tokens
+SLACK_BOT=$(grep '^SLACK_BOT_TOKEN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
+SLACK_APP=$(grep '^SLACK_APP_TOKEN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
+if [[ -n "$SLACK_BOT" ]] && [[ -n "$SLACK_APP" ]]; then
+    info "Slack tokens: configured (Socket Mode)"
+elif [[ -n "$SLACK_BOT" ]]; then
+    warn "Slack: SLACK_BOT_TOKEN set but SLACK_APP_TOKEN missing (Socket Mode requires both)"
+else
+    warn "Slack: not configured (set SLACK_BOT_TOKEN + SLACK_APP_TOKEN in .env)"
 fi
 
 # Check SSH key

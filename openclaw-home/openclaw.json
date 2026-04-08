@@ -26,5 +26,11 @@
     "elevated": {
       "enabled": false
     }
+  },
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "mode": "socket"
+    }
   }
 }
