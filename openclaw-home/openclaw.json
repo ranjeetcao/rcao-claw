@@ -1,12 +1,9 @@
 {
   "gateway": {
     "mode": "local",
-    "bind": "lan",
-    "port": 3000,
-    "auth": {
-      "mode": "token",
-      "token": "5de6a258b53a5bac6984f4577022cc129e35a62f832a2034"
-    }
+    "bind": "custom",
+    "customBindHost": "0.0.0.0",
+    "port": 3000
   },
   "agents": {
     "defaults": {
@@ -31,19 +28,8 @@
     }
   },
   "tools": {
-    "allow": [
-      "read",
-      "write",
-      "edit",
-      "message"
-    ],
-    "deny": [
-      "exec",
-      "bash",
-      "process",
-      "browser",
-      "canvas"
-    ],
+    "allow": ["read", "write", "edit", "message"],
+    "deny": ["exec", "bash", "process", "browser", "canvas"],
     "elevated": {
       "enabled": false
     }
@@ -53,9 +39,5 @@
       "enabled": true,
       "mode": "socket"
     }
-  },
-  "meta": {
-    "lastTouchedVersion": "2026.4.2",
-    "lastTouchedAt": "2026-04-08T10:13:39.090Z"
   }
 }

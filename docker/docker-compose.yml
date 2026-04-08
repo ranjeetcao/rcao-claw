@@ -31,7 +31,11 @@ services:
     ports:
       - "127.0.0.1:3000:3000"       # Web UI - localhost only, not exposed to network
     volumes:
-      # Claw home directory (writable - gateway needs to write temp files alongside config)
+      # Claw home directory — must be a single :rw directory mount because the gateway
+      # writes config atomically via temp-file + rename, which is incompatible with
+      # individual bind-mounted files (Docker bind mounts can't be replaced via rename).
+      # Security: the entrypoint enforces read-only on personality files (SOUL.md, etc.)
+      # at the filesystem level, and credentials/ is protected by host-side permissions.
       - ../openclaw-home:/home/openclaw/.openclaw:rw
 
       # Whitelisted scripts (read-only - container can see but not modify)
@@ -122,7 +126,11 @@ networks:
     driver: bridge
     internal: true
 
-  # Network for Web UI port publishing (localhost only)
+  # Network for Web UI port publishing (localhost only).
+  # NOT internal — Docker requires a non-internal network for port publishing to the host.
+  # Verified: ports: directives are silently ignored on internal-only containers.
+  # Internet bypass is mitigated by HTTP_PROXY/HTTPS_PROXY env vars on the container
+  # and the port binding is restricted to 127.0.0.1 in the compose ports: directive.
   web-access:
     driver: bridge
 

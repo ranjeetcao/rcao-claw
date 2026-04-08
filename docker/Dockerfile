@@ -11,7 +11,9 @@ RUN npm install -g openclaw@${OPENCLAW_VERSION}
 
 RUN useradd -m -s /bin/bash openclaw && \
     mkdir -p /openclaw/.ssh /openclaw/data /openclaw/logs && \
-    chown -R openclaw:openclaw /openclaw
+    chown -R openclaw:openclaw /openclaw && \
+    mkdir -p /home/openclaw/.openclaw && \
+    chown openclaw:openclaw /home/openclaw/.openclaw
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

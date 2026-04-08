@@ -32,8 +32,9 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 # Parse .env safely (no source — prevents code injection)
-OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
-REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+# || true: grep exits 1 if key is missing — don't abort under set -euo pipefail
+OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 
 # --- Pre-flight checks -------------------------------------------------------
 
@@ -57,6 +58,12 @@ if ! command -v ssh-keygen &>/dev/null; then
 fi
 info "SSH tools available"
 
+if ! command -v jq &>/dev/null; then
+    error "jq not found. Install jq first (e.g., apt install jq / brew install jq)."
+    exit 1
+fi
+info "jq available"
+
 # Detect system resources and calculate container limits
 TOTAL_CPUS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 TOTAL_MEM_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || \
@@ -65,11 +72,14 @@ TOTAL_MEM_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || \
 if [[ "$TOTAL_MEM_MB" -lt 6144 ]]; then
     warn "Only ${TOTAL_MEM_MB}MB RAM detected. Minimum recommended: 6GB."
 fi
+if [[ "$TOTAL_CPUS" -lt 4 ]]; then
+    warn "Only ${TOTAL_CPUS} CPUs detected. Recommended: 4+ for comfortable usage."
+fi
 
-# Calculate resource limits (leave headroom for host OS)
-export OLLAMA_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.6; if (v < 0.5) v = 0.5; printf \"%.1f\", v}")
-export OLLAMA_MEM="$(( TOTAL_MEM_MB * 50 / 100 ))M"
-export CLAW_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.4; if (v < 0.25) v = 0.25; printf \"%.1f\", v}")
+# Calculate resource limits — 40% + 25% = 65% total, leaving 35% for host OS + Squid
+export OLLAMA_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.40; if (v < 0.5) v = 0.5; printf \"%.1f\", v}")
+export OLLAMA_MEM="$(( TOTAL_MEM_MB * 45 / 100 ))M"
+export CLAW_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.25; if (v < 0.25) v = 0.25; printf \"%.1f\", v}")
 export CLAW_MEM="$(( TOTAL_MEM_MB * 20 / 100 ))M"
 info "System: ${TOTAL_CPUS} CPUs, ${TOTAL_MEM_MB}MB RAM"
 info "  Ollama limits: ${OLLAMA_CPUS} CPUs, ${OLLAMA_MEM}"
@@ -90,15 +100,37 @@ mkdir -p "$SCRIPT_DIR/openclaw-home/workspace/skills"
 # Create MEMORY.md if missing (docker bind-mounts it as a file)
 touch "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
 
-# Fix permissions for container user (UID 1001 inside container)
+# Create gateway runtime directories (written to on first start)
+for d in canvas devices identity sandboxes tasks; do
+    mkdir -p "$SCRIPT_DIR/openclaw-home/$d"
+done
+
+# Fix permissions for container user (UID 1001 inside container).
+# Only writable dirs get 1001 ownership — config and personality files stay host-owned.
+CONTAINER_UID=1001
+CONTAINER_GID=1001
+
 # Squid runs as proxy user (UID 13) — needs write access to mounted log dir
 chmod 777 "$SCRIPT_DIR/logs/squid"
-# Logs dir writable by container user
 chmod 777 "$SCRIPT_DIR/logs"
-# openclaw-home writable by container (gateway writes temp files, auto-migrates config)
-chmod -R a+rwX "$SCRIPT_DIR/openclaw-home"
 
-info "Directory structure ready (permissions set for container access)"
+# Gateway config — writable (gateway writes auth token and auto-migrates on first start)
+chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/openclaw.json"
+
+# Gateway runtime dirs — writable
+for d in agents canvas devices identity sandboxes skills tasks; do
+    chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/$d"
+done
+
+# Workspace writable dirs (memory, skills, MEMORY.md)
+chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/memory"
+chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/skills"
+chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
+
+# NOTE: Personality files (AGENTS.md, SOUL.md, USER.md, IDENTITY.md, TOOLS.md) and
+# credentials/ are intentionally NOT chowned — they stay host-owned (read-only to container).
+
+info "Directory structure ready (permissions set for container UID $CONTAINER_UID)"
 
 # --- Generate SSH keypair (if not exists) ------------------------------------
 
@@ -112,9 +144,11 @@ else
     info "SSH keypair generated"
 fi
 
-# SSH key needs to be readable by container user (mounted read-only, but must be world-readable
-# since container UID differs from host UID). The entrypoint copies it to a secure location with 600.
-chmod 644 "$SSH_KEY"
+# SSH key must be readable by container user (UID 1001) for the read-only bind mount.
+# Using 640 + group ownership avoids world-readable (644 would break host ssh usage).
+# The entrypoint copies it to ~/.ssh/id_ed25519 with mode 600 inside the container.
+chown "$(id -u):$CONTAINER_UID" "$SSH_KEY"
+chmod 640 "$SSH_KEY"
 
 # --- Setup restricted user (requires sudo) -----------------------------------
 
@@ -294,10 +328,18 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
         sleep 1
     done
 
-    # Auto-approve CLI device pairing so gateway commands work immediately
+    # Auto-approve the CLI device pairing so gateway commands work immediately.
+    # Approve by clientId=cli to avoid approving an unrelated device in a race condition.
     if curl -sf http://localhost:3000/health &>/dev/null; then
         info "Approving CLI device pairing..."
-        docker compose exec openclaw openclaw devices approve --latest 2>/dev/null || true
+        CLI_REQUEST_ID=$(docker compose exec -T openclaw openclaw devices list --json 2>/dev/null \
+            | jq -r '.pending[] | select(.clientId == "cli") | .requestId' 2>/dev/null | head -1)
+        if [[ -n "$CLI_REQUEST_ID" ]]; then
+            docker compose exec -T openclaw openclaw devices approve "$CLI_REQUEST_ID" 2>/dev/null || true
+            info "CLI device paired"
+        else
+            warn "No pending CLI pairing request found (may already be paired)"
+        fi
     fi
 
     # Pull Qwen model
@@ -366,13 +408,11 @@ else
     warn "SSH key: missing"
 fi
 
-# Extract gateway auth token
+# Extract gateway auth token using jq for reliable JSON parsing
 GATEWAY_TOKEN=""
 if docker ps --format '{{.Names}}' | grep -q zupee-claw; then
     GATEWAY_TOKEN=$(docker exec zupee-claw cat /home/openclaw/.openclaw/openclaw.json 2>/dev/null \
-        | grep -o '"token"[[:space:]]*:[[:space:]]*"[^"]*"' \
-        | head -1 \
-        | sed 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
+        | jq -r '.gateway.auth.token // empty' 2>/dev/null)
     if [[ -n "$GATEWAY_TOKEN" ]]; then
         info "Gateway auth token: extracted"
     else
@@ -386,18 +426,20 @@ echo ""
 echo "  Config:      $SCRIPT_DIR/.env"
 echo "  Version:     Claw $OPENCLAW_VERSION"
 echo "  Repo:        ${REPO:-'(not set)'}"
-if [[ -n "$GATEWAY_TOKEN" ]]; then
-echo "  Web UI:      http://localhost:3000/?token=$GATEWAY_TOKEN"
-echo "  Auth Token:  $GATEWAY_TOKEN"
-else
 echo "  Web UI:      http://localhost:3000"
-fi
 echo "  Agent files: $SCRIPT_DIR/openclaw-home/workspace/"
 echo "  Logs:        $SCRIPT_DIR/logs/"
 echo ""
 echo "  Next steps:"
-echo "    1. Open the Web UI URL above in your browser"
-echo "    2. Approve browser pairing:"
+echo "    1. Open the Web UI at http://localhost:3000"
+echo "    2. When prompted to pair, paste the auth token shown below"
+if [[ -n "$GATEWAY_TOKEN" ]]; then
+echo ""
+echo "       Auth Token: $GATEWAY_TOKEN"
+echo ""
+echo "       (retrieve later: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json)"
+fi
+echo "    3. Approve browser pairing:"
 echo "       docker exec zupee-claw openclaw devices approve --latest"
 echo ""
 echo "  To tear down: $SCRIPT_DIR/cleanup.sh"
