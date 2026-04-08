@@ -59,14 +59,26 @@ services:
       - ../logs:/openclaw/logs:rw
     environment:
       - OLLAMA_HOST=http://ollama:11434
+      - HTTP_PROXY=http://squid:3128
+      - HTTPS_PROXY=http://squid:3128
+      - NO_PROXY=ollama,localhost,127.0.0.1,host.docker.internal
+      - http_proxy=http://squid:3128
+      - https_proxy=http://squid:3128
+      - no_proxy=ollama,localhost,127.0.0.1,host.docker.internal
+      # For production, consider using Docker secrets instead of env vars
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       ollama:
         condition: service_healthy
+      squid:
+        condition: service_healthy
     networks:
       - isolated
       - host-access
+      - squid-internal
     deploy:
       resources:
         limits:
@@ -79,6 +91,31 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  squid:
+    image: ubuntu/squid:latest
+    container_name: zupee-squid
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+      - ../logs/squid:/var/log/squid:rw
+    # To temporarily expose the proxy port for debugging, uncomment:
+    # ports:
+    #   - "127.0.0.1:3128:3128"
+    networks:
+      - squid-internal
+      - squid-egress
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "squidclient -h 127.0.0.1 -p 3128 mgr:info 2>&1 | grep -q 'Squid Object Cache'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   ollama-models:
@@ -93,3 +130,12 @@ networks:
   host-access:
     driver: bridge
     internal: true
+
+  # Internal network for openclaw <-> squid communication only (no internet)
+  squid-internal:
+    driver: bridge
+    internal: true
+
+  # Egress network for squid -> internet (Slack API)
+  squid-egress:
+    driver: bridge

@@ -13,6 +13,7 @@ openclaw-home/workspace/MEMORY.md
 
 # Logs
 logs/*.log
+logs/squid/
 
 # Rate limit files (runtime)
 *.rate-limit

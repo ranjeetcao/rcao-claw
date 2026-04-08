@@ -29,7 +29,7 @@ echo -e "${RED}  Zupee Claw - Full Cleanup${NC}"
 echo -e "${RED}========================================${NC}"
 echo ""
 echo "This will remove:"
-echo "  - Docker containers (zupee-claw, zupee-ollama)"
+echo "  - Docker containers (zupee-claw, zupee-ollama, zupee-squid)"
 echo "  - Docker images and volumes"
 echo "  - SSH key, authorized_keys, sshd config"
 echo "  - Host user: openclaw-bot"
@@ -173,7 +173,8 @@ if [[ -d "$SCRIPT_DIR/logs" ]] && ls "$SCRIPT_DIR/logs"/*.log &>/dev/null 2>&1; 
     read -rp "Delete log files? [y/N] " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         rm -f "$SCRIPT_DIR/logs"/*.log
-        info "Logs deleted"
+        rm -rf "$SCRIPT_DIR/logs/squid"
+        info "Logs deleted (including Squid logs)"
     else
         warn "Kept logs"
     fi

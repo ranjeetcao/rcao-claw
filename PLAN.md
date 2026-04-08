@@ -48,6 +48,16 @@ Claude Code in a locked-down mode for coding tasks on the dev workspace.
 |                                                               |
 |  User: openclaw-bot (restricted, no sudo, rbash)              |
 +---------------------------------------------------------------+
+
++---------------------------------------------------------------+
+|  DOCKER: zupee-squid (squid-net)                              |
+|                                                               |
+|  Squid forward proxy on 127.0.0.1:3128                        |
+|  ACL: ONLY *.slack.com + *.slack-edge.com, port 443           |
+|  zupee-claw joins squid-net (HTTPS_PROXY=http://squid:3128)  |
+|  Claw's native Slack plugin uses Socket Mode via proxy        |
+|  Ollama does NOT join squid-net (stays air-gapped)            |
++---------------------------------------------------------------+
 ```
 
 ## Directory Structure
@@ -99,12 +109,17 @@ zupee-claw/                         # Claw's entire home
 │   └── skills/                         # Shared managed skills
 ├── docker/
 │   ├── Dockerfile                      # Claw + SSH client
-│   ├── docker-compose.yml              # Full stack (openclaw + ollama)
+│   ├── docker-compose.yml              # Full stack (openclaw + ollama + squid)
+│   ├── squid.conf                      # Squid proxy config (Slack-only ACLs)
 │   └── entrypoint.sh                   # Container startup
 └── logs/                               # Audit logs (mounted :rw)
     ├── gateway.log                     # SSH command log
     ├── claude.log                      # Claude Code execution log
-    └── openclaw.log                    # Claw gateway log
+    ├── slack.log                       # Slack operations log
+    ├── openclaw.log                    # Claw gateway log
+    └── squid/                          # Squid proxy logs
+        ├── access.log                  # All proxy requests
+        └── cache.log                   # Squid cache log
 
 ~/workspace/                   # Dev codebase (SEPARATE)
 ├── .claude/
@@ -205,7 +220,6 @@ git-status
 git-pull
 run-tests
 run-claude
-deploy-staging
 service-status
 ```
 
@@ -401,8 +415,9 @@ exec openclaw gateway run \
   },
   "agents": {
     "defaults": {
+      "workspace": "~/.openclaw/workspace",
       "sandbox": {
-        "mode": "off"
+        "mode": "all"
       }
     }
   },
@@ -415,16 +430,20 @@ exec openclaw gateway run \
     }
   },
   "tools": {
-    "allow": ["exec", "read", "write", "edit"],
-    "deny": ["browser", "canvas"],
+    "allow": ["read", "write", "edit", "message"],
+    "deny": ["exec", "bash", "process", "browser", "canvas"],
     "elevated": {
       "enabled": false
+    }
+  },
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "mode": "socket"
     }
   }
 }
 ```
-
-Sandbox is `off` because the Docker container IS the sandbox.
 
 ## Phase 4: Claude Code Lockdown for f2p-root
 
@@ -614,6 +633,10 @@ SSH -> ssh-gateway.sh -> allowed-commands.conf
 | Read-only mount | Script integrity | Script tampering from container |
 | Audit logs | Full command history | Undetected misuse |
 | Docker resource limits | Memory/CPU caps | Resource exhaustion |
+| Squid proxy ACL | Only *.slack.com allowed | Internet access beyond Slack |
+| Squid port restriction | HTTPS only (port 443) | HTTP/non-standard port access |
+| HTTPS_PROXY + NO_PROXY | Container routes Slack via Squid, Ollama stays isolated | Proxy bypass |
+| Native Socket Mode | Real-time Slack via Claw plugin (no custom scripts) | Polling latency |
 
 ## Risk Assessment
 
