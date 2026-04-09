@@ -88,9 +88,10 @@ if [[ "$TOTAL_CPUS" -lt 4 ]]; then
     warn "Only ${TOTAL_CPUS} CPUs detected. Recommended: 4+ for comfortable usage."
 fi
 
-# Calculate resource limits — 40% + 25% = 65% total, leaving 35% for host OS + Squid
-export OLLAMA_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.40; if (v < 0.5) v = 0.5; printf \"%.1f\", v}")
-export OLLAMA_MEM="$(( TOTAL_MEM_MB * 45 / 100 ))M"
+# Calculate resource limits — Ollama gets the lion's share since LLM inference is memory-hungry.
+# 50% + 20% = 70% total, leaving 30% for host OS + Squid.
+export OLLAMA_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.50; if (v < 0.5) v = 0.5; printf \"%.1f\", v}")
+export OLLAMA_MEM="$(( TOTAL_MEM_MB * 50 / 100 ))M"
 export CLAW_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.25; if (v < 0.25) v = 0.25; printf \"%.1f\", v}")
 export CLAW_MEM="$(( TOTAL_MEM_MB * 20 / 100 ))M"
 info "System: ${TOTAL_CPUS} CPUs, ${TOTAL_MEM_MB}MB RAM"
@@ -122,22 +123,36 @@ done
 CONTAINER_UID=1001
 CONTAINER_GID=1001
 
+# Reclaim any files left by a previous container run (owned by UID 1001).
+# Without this, chown may fail on re-runs if dirs already contain container-owned files.
+FOREIGN_FILES=$(find "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs" -not -user "$(id -u)" 2>/dev/null | head -1)
+if [[ -n "$FOREIGN_FILES" ]]; then
+    warn "Found files from a previous container run. Reclaiming ownership (requires sudo)..."
+    if sudo chown -R "$(id -u):$(id -g)" "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs"; then
+        info "Ownership reclaimed"
+    else
+        error "Failed to reclaim file ownership. Run manually:"
+        echo "  sudo chown -R \$(id -u):\$(id -g) $SCRIPT_DIR/openclaw-home $SCRIPT_DIR/logs"
+        exit 1
+    fi
+fi
+
 # Squid runs as proxy user (UID 13) — needs write access to mounted log dir
 chmod 777 "$SCRIPT_DIR/logs/squid"
 chmod 777 "$SCRIPT_DIR/logs"
 
 # Gateway config — writable (gateway writes auth token and auto-migrates on first start)
-chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/openclaw.json"
+sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/openclaw.json"
 
 # Gateway runtime dirs — writable
 for d in agents canvas devices identity sandboxes skills tasks; do
-    chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/$d"
+    sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/$d"
 done
 
 # Workspace writable dirs (memory, skills, MEMORY.md)
-chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/memory"
-chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/skills"
-chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
+sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/memory"
+sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/skills"
+sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
 
 # NOTE: Personality files (AGENTS.md, SOUL.md, USER.md, IDENTITY.md, TOOLS.md) and
 # credentials/ are intentionally NOT chowned — they stay host-owned (read-only to container).
@@ -159,7 +174,7 @@ fi
 # SSH key must be readable by container user (UID 1001) for the read-only bind mount.
 # Using 640 + group ownership avoids world-readable (644 would break host ssh usage).
 # The entrypoint copies it to ~/.ssh/id_ed25519 with mode 600 inside the container.
-chown "$(id -u):$CONTAINER_UID" "$SSH_KEY"
+sudo chown "$(id -u):$CONTAINER_UID" "$SSH_KEY"
 chmod 640 "$SSH_KEY"
 
 # --- Setup restricted user (requires sudo) -----------------------------------
@@ -340,29 +355,76 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
         sleep 1
     done
 
-    # Auto-approve the CLI device pairing so gateway commands work immediately.
-    # Approve by clientId=cli to avoid approving an unrelated device in a race condition.
+    # Extract gateway token — the gateway generates it on first start and writes
+    # it back to openclaw.json. Wait for the token to appear.
     if curl -sf http://localhost:3000/health &>/dev/null; then
-        info "Approving CLI device pairing..."
-        CLI_REQUEST_ID=$(docker compose exec -T openclaw openclaw devices list --json 2>/dev/null \
-            | jq -r '.pending[] | select(.clientId == "cli") | .requestId' 2>/dev/null | head -1)
-        if [[ -n "$CLI_REQUEST_ID" ]]; then
-            docker compose exec -T openclaw openclaw devices approve "$CLI_REQUEST_ID" 2>/dev/null || true
-            info "CLI device paired"
+        GATEWAY_TOKEN=""
+        info "Waiting for gateway to generate auth token..."
+        for i in $(seq 1 30); do
+            GATEWAY_TOKEN=$(docker exec zupee-claw cat /home/openclaw/.openclaw/openclaw.json 2>/dev/null \
+                | jq -r '.gateway.auth.token // empty' 2>/dev/null)
+            if [[ -n "$GATEWAY_TOKEN" ]]; then
+                break
+            fi
+            sleep 1
+        done
+        if [[ -n "$GATEWAY_TOKEN" ]]; then
+            info "Web UI ready at http://localhost:3000"
+            echo ""
+            echo "  Auth Token: $GATEWAY_TOKEN"
+            echo "  (paste this in the Web UI when prompted to pair)"
+            echo ""
+            # Open browser to the Web UI (without token in URL to avoid leaking to browser history)
+            if command -v xdg-open &>/dev/null; then
+                xdg-open "http://localhost:3000" 2>/dev/null &
+            elif command -v open &>/dev/null; then
+                open "http://localhost:3000" 2>/dev/null &
+            fi
+            # Poll for browser pairing request and auto-approve it.
+            # The user opens the URL, clicks Connect, and this loop approves it.
+            info "Waiting for browser pairing (open the URL above and click Connect)..."
+            PAIRED=false
+            for i in $(seq 1 120); do
+                REQUEST_ID=$(docker exec zupee-claw openclaw devices list --json 2>/dev/null \
+                    | jq -r '.pending[] | select(.clientId == "openclaw-control-ui") | .requestId // empty' 2>/dev/null | head -1)
+                if [[ -n "$REQUEST_ID" ]]; then
+                    docker exec zupee-claw openclaw devices approve "$REQUEST_ID" 2>/dev/null
+                    info "Browser paired!"
+                    PAIRED=true
+                    break
+                fi
+                sleep 1
+            done
+            if [[ "$PAIRED" != "true" ]]; then
+                warn "No browser pairing within 2 minutes. Approve manually:"
+                echo "  docker exec zupee-claw openclaw devices approve --latest"
+            fi
         else
-            warn "No pending CLI pairing request found (may already be paired)"
+            warn "Gateway token not generated after 30s"
+            warn "Retrieve token: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json"
         fi
     fi
 
-    # Pull Qwen model
+    # Pull Qwen model — Ollama is on the isolated network (no internet),
+    # so we temporarily connect it to squid-egress for the download.
     echo ""
     read -rp "Pull $OLLAMA_MODEL model now? (this may take a while) [y/N] " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        info "Connecting Ollama to internet for model download..."
+        docker network connect zupee-claw_squid-egress zupee-ollama 2>/dev/null || true
         info "Pulling $OLLAMA_MODEL... (this may take several minutes)"
-        docker compose exec ollama ollama pull "$OLLAMA_MODEL"
-        info "$OLLAMA_MODEL ready"
+        if docker compose exec ollama ollama pull "$OLLAMA_MODEL"; then
+            info "$OLLAMA_MODEL ready"
+        else
+            error "Failed to pull $OLLAMA_MODEL — check network or try again later"
+        fi
+        info "Disconnecting Ollama from internet..."
+        docker network disconnect zupee-claw_squid-egress zupee-ollama 2>/dev/null || true
     else
-        warn "Pull later with: docker compose exec ollama ollama pull $OLLAMA_MODEL"
+        warn "Pull later with:"
+        echo "  docker network connect zupee-claw_squid-egress zupee-ollama"
+        echo "  docker exec zupee-ollama ollama pull $OLLAMA_MODEL"
+        echo "  docker network disconnect zupee-claw_squid-egress zupee-ollama"
     fi
 
     cd "$SCRIPT_DIR"
@@ -438,21 +500,21 @@ echo ""
 echo "  Config:      $SCRIPT_DIR/.env"
 echo "  Version:     Claw $OPENCLAW_VERSION"
 echo "  Repo:        ${REPO:-'(not set)'}"
-echo "  Web UI:      http://localhost:3000"
 echo "  Agent files: $SCRIPT_DIR/openclaw-home/workspace/"
 echo "  Logs:        $SCRIPT_DIR/logs/"
 echo ""
-echo "  Next steps:"
-echo "    1. Open the Web UI at http://localhost:3000"
-echo "    2. When prompted to pair, paste the auth token shown below"
+echo "  Web UI:      http://localhost:3000"
+echo ""
 if [[ -n "$GATEWAY_TOKEN" ]]; then
+echo "  Auth Token:  $GATEWAY_TOKEN"
 echo ""
-echo "       Auth Token: $GATEWAY_TOKEN"
-echo ""
-echo "       (retrieve later: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json)"
+echo "  Open the Web UI and paste the token when prompted to pair."
+echo "  (retrieve later: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json)"
+else
+echo "  Next steps:"
+echo "    1. Open http://localhost:3000"
+echo "    2. Retrieve token: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json"
 fi
-echo "    3. Approve browser pairing:"
-echo "       docker exec zupee-claw openclaw devices approve --latest"
 echo ""
 echo "  To tear down: $SCRIPT_DIR/cleanup.sh"
 echo ""
