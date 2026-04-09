@@ -89,11 +89,11 @@ if [[ "$TOTAL_CPUS" -lt 4 ]]; then
 fi
 
 # Calculate resource limits — Ollama gets the lion's share since LLM inference is memory-hungry.
-# 75% + 15% = 90% total, leaving 10% for host OS + Squid.
+# 50% + 20% = 70% total, leaving 30% for host OS + Squid.
 export OLLAMA_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.50; if (v < 0.5) v = 0.5; printf \"%.1f\", v}")
-export OLLAMA_MEM="$(( TOTAL_MEM_MB * 75 / 100 ))M"
+export OLLAMA_MEM="$(( TOTAL_MEM_MB * 50 / 100 ))M"
 export CLAW_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.25; if (v < 0.25) v = 0.25; printf \"%.1f\", v}")
-export CLAW_MEM="$(( TOTAL_MEM_MB * 15 / 100 ))M"
+export CLAW_MEM="$(( TOTAL_MEM_MB * 20 / 100 ))M"
 info "System: ${TOTAL_CPUS} CPUs, ${TOTAL_MEM_MB}MB RAM"
 info "  Ollama limits: ${OLLAMA_CPUS} CPUs, ${OLLAMA_MEM}"
 info "  Claw limits:   ${CLAW_CPUS} CPUs, ${CLAW_MEM}"
@@ -118,13 +118,13 @@ for d in canvas devices identity sandboxes tasks; do
     mkdir -p "$SCRIPT_DIR/openclaw-home/$d"
 done
 
-# Fix permissions so container user (UID 1001) can read/write runtime dirs.
-# Uses chmod instead of chown to avoid requiring sudo for this step.
-# Personality files and credentials are NOT opened — they stay read-only to the container.
+# Fix permissions for container user (UID 1001 inside container).
+# Only writable dirs get 1001 ownership — config and personality files stay host-owned.
+CONTAINER_UID=1001
+CONTAINER_GID=1001
 
 # Reclaim any files left by a previous container run (owned by UID 1001).
-# Without this, chmod fails on re-runs because we can't change permissions on
-# files we don't own.
+# Without this, chown may fail on re-runs if dirs already contain container-owned files.
 FOREIGN_FILES=$(find "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs" -not -user "$(id -u)" 2>/dev/null | head -1)
 if [[ -n "$FOREIGN_FILES" ]]; then
     warn "Found files from a previous container run. Reclaiming ownership (requires sudo)..."
@@ -142,19 +142,22 @@ chmod 777 "$SCRIPT_DIR/logs/squid"
 chmod 777 "$SCRIPT_DIR/logs"
 
 # Gateway config — writable (gateway writes auth token and auto-migrates on first start)
-chmod 666 "$SCRIPT_DIR/openclaw-home/openclaw.json"
+sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/openclaw.json"
 
 # Gateway runtime dirs — writable
 for d in agents canvas devices identity sandboxes skills tasks; do
-    chmod -R 777 "$SCRIPT_DIR/openclaw-home/$d"
+    sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/$d"
 done
 
 # Workspace writable dirs (memory, skills, MEMORY.md)
-chmod -R 777 "$SCRIPT_DIR/openclaw-home/workspace/memory"
-chmod -R 777 "$SCRIPT_DIR/openclaw-home/workspace/skills"
-chmod 666 "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
+sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/memory"
+sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/skills"
+sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
 
-info "Directory structure ready (permissions opened for container access)"
+# NOTE: Personality files (AGENTS.md, SOUL.md, USER.md, IDENTITY.md, TOOLS.md) and
+# credentials/ are intentionally NOT chowned — they stay host-owned (read-only to container).
+
+info "Directory structure ready (permissions set for container UID $CONTAINER_UID)"
 
 # --- Generate SSH keypair (if not exists) ------------------------------------
 
@@ -169,9 +172,10 @@ else
 fi
 
 # SSH key must be readable by container user (UID 1001) for the read-only bind mount.
-# Using 644 so any UID can read it. The entrypoint copies it to ~/.ssh/id_ed25519
-# with mode 600 inside the container, so the runtime key stays properly restricted.
-chmod 644 "$SSH_KEY"
+# Using 640 + group ownership avoids world-readable (644 would break host ssh usage).
+# The entrypoint copies it to ~/.ssh/id_ed25519 with mode 600 inside the container.
+sudo chown "$(id -u):$CONTAINER_UID" "$SSH_KEY"
+chmod 640 "$SSH_KEY"
 
 # --- Setup restricted user (requires sudo) -----------------------------------
 
@@ -365,16 +369,16 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
             sleep 1
         done
         if [[ -n "$GATEWAY_TOKEN" ]]; then
-            WEB_URL="http://localhost:3000?token=$GATEWAY_TOKEN"
-            info "Web UI ready. Open in your browser:"
+            info "Web UI ready at http://localhost:3000"
             echo ""
-            echo "  $WEB_URL"
+            echo "  Auth Token: $GATEWAY_TOKEN"
+            echo "  (paste this in the Web UI when prompted to pair)"
             echo ""
-            # Try to open browser (macOS, Linux desktop, WSL)
+            # Open browser to the Web UI (without token in URL to avoid leaking to browser history)
             if command -v xdg-open &>/dev/null; then
-                xdg-open "$WEB_URL" 2>/dev/null &
+                xdg-open "http://localhost:3000" 2>/dev/null &
             elif command -v open &>/dev/null; then
-                open "$WEB_URL" 2>/dev/null &
+                open "http://localhost:3000" 2>/dev/null &
             fi
             # Poll for browser pairing request and auto-approve it.
             # The user opens the URL, clicks Connect, and this loop approves it.
@@ -499,10 +503,13 @@ echo "  Repo:        ${REPO:-'(not set)'}"
 echo "  Agent files: $SCRIPT_DIR/openclaw-home/workspace/"
 echo "  Logs:        $SCRIPT_DIR/logs/"
 echo ""
-if [[ -n "$GATEWAY_TOKEN" ]]; then
-echo "  Web UI (auto-pair): http://localhost:3000?token=$GATEWAY_TOKEN"
+echo "  Web UI:      http://localhost:3000"
 echo ""
-echo "  Open the URL above — browser will auto-pair when you click Connect."
+if [[ -n "$GATEWAY_TOKEN" ]]; then
+echo "  Auth Token:  $GATEWAY_TOKEN"
+echo ""
+echo "  Open the Web UI and paste the token when prompted to pair."
+echo "  (retrieve later: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json)"
 else
 echo "  Next steps:"
 echo "    1. Open http://localhost:3000"
