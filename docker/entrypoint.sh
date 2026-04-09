@@ -30,10 +30,11 @@ for f in AGENTS.md SOUL.md USER.md IDENTITY.md TOOLS.md; do
 done
 echo "[entrypoint] Personality files verified"
 
-# Wait for Ollama to be ready (healthcheck handles this, but belt-and-suspenders)
-echo "[entrypoint] Waiting for Ollama..."
+# Wait for Ollama to be ready (may be Docker container or native host install)
+OLLAMA_API="${OLLAMA_HOST:-http://ollama:11434}"
+echo "[entrypoint] Waiting for Ollama at $OLLAMA_API..."
 for i in $(seq 1 30); do
-    if curl -sf http://ollama:11434/api/tags >/dev/null 2>&1; then
+    if curl -sf "${OLLAMA_API}/api/tags" >/dev/null 2>&1; then
         echo "[entrypoint] Ollama is ready"
         break
     fi

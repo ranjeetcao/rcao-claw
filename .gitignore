@@ -13,6 +13,10 @@ openclaw-home/workspace/MEMORY.md
 openclaw-home/workspace/HEARTBEAT.md
 openclaw-home/workspace/.openclaw/
 
+# Gateway runtime databases (auto-generated)
+openclaw-home/flows/
+openclaw-home/memory/
+
 # Gateway runtime artifacts (auto-generated on first start)
 openclaw-home/canvas/
 openclaw-home/devices/

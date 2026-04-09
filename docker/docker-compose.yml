@@ -1,7 +1,11 @@
 name: zupee-claw
 
 services:
+  # Ollama LLM inference — only used in Docker mode (OLLAMA_MODE=docker).
+  # On macOS, run Ollama natively for Metal GPU acceleration instead.
+  # Activate with: docker compose --profile docker-ollama up -d
   ollama:
+    profiles: ["docker-ollama"]
     image: ollama/ollama:0.20.3
     container_name: zupee-ollama
     volumes:
@@ -49,7 +53,7 @@ services:
       # Audit logs (read-write)
       - ../logs:/openclaw/logs:rw
     environment:
-      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
       - HTTP_PROXY=http://squid:3128
       - HTTPS_PROXY=http://squid:3128
       - NO_PROXY=ollama,localhost,127.0.0.1,host.docker.internal
@@ -61,9 +65,9 @@ services:
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Note: Ollama dependency removed — entrypoint.sh handles readiness check.
+    # This allows running Ollama natively (outside Docker) on macOS for Metal GPU.
     depends_on:
-      ollama:
-        condition: service_healthy
       squid:
         condition: service_healthy
     networks:

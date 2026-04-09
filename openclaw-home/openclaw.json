@@ -10,7 +10,12 @@
       "workspace": "~/.openclaw/workspace",
       "sandbox": {
         "mode": "off"
-      }
+      },
+      "model": {
+        "primary": "ollama/qwen3.5:4b"
+      },
+      "timeoutSeconds": 300,
+      "thinkingDefault": "low"
     }
   },
   "models": {
@@ -19,17 +24,29 @@
         "baseUrl": "http://ollama:11434",
         "models": [
           {
-            "id": "qwen3.5",
-            "name": "Qwen 3.5",
-            "api": "ollama"
+            "id": "qwen3.5:4b",
+            "name": "Qwen 3.5 4B",
+            "api": "ollama",
+            "contextWindow": 65536
           }
         ]
       }
     }
   },
   "tools": {
-    "allow": ["read", "write", "edit", "message"],
-    "deny": ["exec", "bash", "process", "browser", "canvas"],
+    "allow": [
+      "read",
+      "write",
+      "edit",
+      "message"
+    ],
+    "deny": [
+      "exec",
+      "bash",
+      "process",
+      "browser",
+      "canvas"
+    ],
     "elevated": {
       "enabled": false
     }

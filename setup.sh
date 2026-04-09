@@ -37,6 +37,18 @@ OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d 
 REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 _WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 OLLAMA_MODEL=$(grep '^OLLAMA_MODEL=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+OLLAMA_MODEL_MEM=$(grep '^OLLAMA_MODEL_MEM=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+OLLAMA_MODE=$(grep '^OLLAMA_MODE=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+OLLAMA_MODE="${OLLAMA_MODE:-auto}"
+
+# Resolve "auto" mode: native on macOS (Metal GPU), docker on Linux
+if [[ "$OLLAMA_MODE" == "auto" ]]; then
+    if [[ "$(uname)" == "Darwin" ]]; then
+        OLLAMA_MODE="native"
+    else
+        OLLAMA_MODE="docker"
+    fi
+fi
 
 # Resolve WORKSPACE_DIR (expand ~ to $HOME), fallback to $HOME/workspace
 if [[ -n "${_WORKSPACE_DIR:-}" ]]; then
@@ -47,10 +59,14 @@ fi
 
 # Fallback for OLLAMA_MODEL
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.5}"
+# Fallback for model memory (GiB) — 3 GiB is safe for small models
+OLLAMA_MODEL_MEM="${OLLAMA_MODEL_MEM:-3}"
 
 # --- Pre-flight checks -------------------------------------------------------
 
 step "Pre-flight checks"
+
+info "Ollama mode: $OLLAMA_MODE"
 
 if ! command -v docker &>/dev/null; then
     error "Docker not found. Install Docker first."
@@ -76,31 +92,128 @@ if ! command -v jq &>/dev/null; then
 fi
 info "jq available"
 
-# Detect system resources and calculate container limits
+if [[ "$OLLAMA_MODE" == "native" ]]; then
+    if ! command -v ollama &>/dev/null; then
+        error "Ollama not found. Install from https://ollama.com/download"
+        exit 1
+    fi
+    info "Ollama found: $(ollama --version 2>&1 | head -1)"
+fi
+
+# Detect system resources
 TOTAL_CPUS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 TOTAL_MEM_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || \
     sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1048576)}' || echo 8192)
 
-if [[ "$TOTAL_MEM_MB" -lt 6144 ]]; then
-    warn "Only ${TOTAL_MEM_MB}MB RAM detected. Minimum recommended: 6GB."
-fi
 if [[ "$TOTAL_CPUS" -lt 4 ]]; then
     warn "Only ${TOTAL_CPUS} CPUs detected. Recommended: 4+ for comfortable usage."
 fi
 
-# Calculate resource limits — Ollama gets the lion's share since LLM inference is memory-hungry.
-# 50% + 20% = 70% total, leaving 30% for host OS + Squid.
-export OLLAMA_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.50; if (v < 0.5) v = 0.5; printf \"%.1f\", v}")
-export OLLAMA_MEM="$(( TOTAL_MEM_MB * 50 / 100 ))M"
+# Service baseline memory overhead (MiB)
+CLAW_BASELINE_MB=512        # Claw gateway (~0.5 GiB)
+SQUID_BASELINE_MB=256       # Squid proxy (~0.25 GiB)
+
+export CLAW_MEM="${CLAW_BASELINE_MB}M"
 export CLAW_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.25; if (v < 0.25) v = 0.25; printf \"%.1f\", v}")
-export CLAW_MEM="$(( TOTAL_MEM_MB * 20 / 100 ))M"
+
+# Set OLLAMA_HOST based on mode
+if [[ "$OLLAMA_MODE" == "native" ]]; then
+    export OLLAMA_HOST="http://host.docker.internal:11434"
+else
+    export OLLAMA_HOST="http://ollama:11434"
+fi
+
 info "System: ${TOTAL_CPUS} CPUs, ${TOTAL_MEM_MB}MB RAM"
-info "  Ollama limits: ${OLLAMA_CPUS} CPUs, ${OLLAMA_MEM}"
-info "  Claw limits:   ${CLAW_CPUS} CPUs, ${CLAW_MEM}"
+info "Model:  $OLLAMA_MODEL (${OLLAMA_MODEL_MEM} GiB)"
+
+if [[ "$OLLAMA_MODE" == "native" ]]; then
+    info "Ollama: native mode (Metal GPU, full system resources)"
+    info "  Claw limits: ${CLAW_CPUS} CPUs, ${CLAW_MEM}"
+else
+    OLLAMA_OVERHEAD_MB=512
+    OLLAMA_MODEL_MEM_MB=$(( OLLAMA_MODEL_MEM * 1024 ))
+    export OLLAMA_MEM="$(( OLLAMA_MODEL_MEM_MB + OLLAMA_OVERHEAD_MB ))M"
+    export OLLAMA_CPUS=$(awk "BEGIN {v=$TOTAL_CPUS * 0.50; if (v < 0.5) v = 0.5; printf \"%.1f\", v}")
+
+    TOTAL_NEEDED_MB=$(( OLLAMA_MODEL_MEM_MB + OLLAMA_OVERHEAD_MB + CLAW_BASELINE_MB + SQUID_BASELINE_MB ))
+    TOTAL_NEEDED_GB=$(awk "BEGIN {printf \"%.1f\", $TOTAL_NEEDED_MB / 1024}")
+
+    info "  Ollama limits: ${OLLAMA_CPUS} CPUs, ${OLLAMA_MEM} (model ${OLLAMA_MODEL_MEM}G + overhead)"
+    info "  Claw limits:   ${CLAW_CPUS} CPUs, ${CLAW_MEM}"
+    info "  Total needed:  ${TOTAL_NEEDED_GB} GiB Docker memory"
+
+    # Preflight check: does Docker have enough memory?
+    DOCKER_MEM_MB=""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        DOCKER_MEM_MB=$(docker info --format '{{.MemTotal}}' 2>/dev/null \
+            | awk '{print int($1/1048576)}' || true)
+    fi
+    DOCKER_MEM_MB="${DOCKER_MEM_MB:-$TOTAL_MEM_MB}"
+
+    if [[ "$DOCKER_MEM_MB" -gt 0 ]] && [[ "$TOTAL_NEEDED_MB" -gt "$DOCKER_MEM_MB" ]]; then
+        DOCKER_MEM_GB=$(awk "BEGIN {printf \"%.1f\", $DOCKER_MEM_MB / 1024}")
+        error "Docker has ${DOCKER_MEM_GB} GiB memory, but $OLLAMA_MODEL needs ${TOTAL_NEEDED_GB} GiB total."
+        echo ""
+        echo "  Options:"
+        echo "    1. Increase Docker Desktop memory to at least ${TOTAL_NEEDED_GB} GiB"
+        echo "       (Docker Desktop > Settings > Resources > Memory)"
+        echo "    2. Use a smaller model (edit OLLAMA_MODEL and OLLAMA_MODEL_MEM in .env)"
+        echo "    3. Switch to native mode: set OLLAMA_MODE=native in .env"
+        echo ""
+        exit 1
+    elif [[ "$DOCKER_MEM_MB" -gt 0 ]]; then
+        DOCKER_MEM_GB=$(awk "BEGIN {printf \"%.1f\", $DOCKER_MEM_MB / 1024}")
+        HEADROOM_MB=$(( DOCKER_MEM_MB - TOTAL_NEEDED_MB ))
+        if [[ "$HEADROOM_MB" -lt 1024 ]]; then
+            warn "Docker has ${DOCKER_MEM_GB} GiB, need ${TOTAL_NEEDED_GB} GiB — tight."
+        else
+            info "Docker memory: ${DOCKER_MEM_GB} GiB available (${TOTAL_NEEDED_GB} GiB needed) — OK"
+        fi
+    fi
+fi
+
+# Persist calculated resource limits to .env so that standalone
+# 'docker compose up' picks them up (compose reads .env automatically).
+# Always persist OLLAMA_HOST and mode; only persist resource limits in docker mode
+PERSIST_VARS="CLAW_MEM CLAW_CPUS OLLAMA_HOST OLLAMA_MODE"
+if [[ "$OLLAMA_MODE" == "docker" ]]; then
+    PERSIST_VARS="$PERSIST_VARS OLLAMA_MEM OLLAMA_CPUS"
+fi
+for VAR_NAME in $PERSIST_VARS; do
+    VAR_VAL="${!VAR_NAME}"
+    if grep -q "^${VAR_NAME}=" "$ENV_FILE" 2>/dev/null; then
+        # Update existing value
+        sed -i.bak "s|^${VAR_NAME}=.*|${VAR_NAME}=${VAR_VAL}|" "$ENV_FILE"
+    else
+        # Append new value
+        echo "${VAR_NAME}=${VAR_VAL}" >> "$ENV_FILE"
+    fi
+done
+rm -f "${ENV_FILE}.bak"
+info "Resource limits written to .env"
 
 # --- Create host directories -------------------------------------------------
 
 step "Creating directories"
+
+# Reclaim any files left by a previous container run (owned by UID 1001) FIRST.
+# This must happen before mkdir/touch — on re-runs, container-owned files block those operations.
+CONTAINER_UID=1001
+CONTAINER_GID=1001
+
+if [[ -d "$SCRIPT_DIR/openclaw-home" ]] || [[ -d "$SCRIPT_DIR/logs" ]]; then
+    FOREIGN_FILES=$(find "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs" -not -user "$(id -u)" 2>/dev/null | head -1)
+    if [[ -n "$FOREIGN_FILES" ]]; then
+        warn "Found files from a previous container run. Reclaiming ownership (requires sudo)..."
+        if sudo chown -R "$(id -u):$(id -g)" "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs"; then
+            info "Ownership reclaimed"
+        else
+            error "Failed to reclaim file ownership. Run manually:"
+            echo "  sudo chown -R \$(id -u):\$(id -g) $SCRIPT_DIR/openclaw-home $SCRIPT_DIR/logs"
+            exit 1
+        fi
+    fi
+fi
 
 mkdir -p "$SCRIPT_DIR/logs"
 mkdir -p "$SCRIPT_DIR/logs/squid"
@@ -118,44 +231,56 @@ for d in canvas devices identity sandboxes tasks; do
     mkdir -p "$SCRIPT_DIR/openclaw-home/$d"
 done
 
-# Fix permissions for container user (UID 1001 inside container).
-# Only writable dirs get 1001 ownership — config and personality files stay host-owned.
-CONTAINER_UID=1001
-CONTAINER_GID=1001
-
-# Reclaim any files left by a previous container run (owned by UID 1001).
-# Without this, chown may fail on re-runs if dirs already contain container-owned files.
-FOREIGN_FILES=$(find "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs" -not -user "$(id -u)" 2>/dev/null | head -1)
-if [[ -n "$FOREIGN_FILES" ]]; then
-    warn "Found files from a previous container run. Reclaiming ownership (requires sudo)..."
-    if sudo chown -R "$(id -u):$(id -g)" "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs"; then
-        info "Ownership reclaimed"
-    else
-        error "Failed to reclaim file ownership. Run manually:"
-        echo "  sudo chown -R \$(id -u):\$(id -g) $SCRIPT_DIR/openclaw-home $SCRIPT_DIR/logs"
-        exit 1
-    fi
-fi
-
 # Squid runs as proxy user (UID 13) — needs write access to mounted log dir
 chmod 777 "$SCRIPT_DIR/logs/squid"
 chmod 777 "$SCRIPT_DIR/logs"
 
+# Parent directory must be traversable by the container user.
+# Without this, the container cannot reach any subdirectory even if they are properly owned.
+chmod 755 "$SCRIPT_DIR/openclaw-home"
+
 # Gateway config — writable (gateway writes auth token and auto-migrates on first start)
-sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/openclaw.json"
+sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/openclaw.json" 2>/dev/null || true
 
 # Gateway runtime dirs — writable
 for d in agents canvas devices identity sandboxes skills tasks; do
-    sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/$d"
+    sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/$d" 2>/dev/null || true
 done
 
 # Workspace writable dirs (memory, skills, MEMORY.md)
-sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/memory"
-sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/skills"
-sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
+sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/memory" 2>/dev/null || true
+sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/skills" 2>/dev/null || true
+sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md" 2>/dev/null || true
+
+# chmod fallback — on macOS with Docker Desktop, chown to UID 1001 is unreliable because
+# that UID doesn't exist as a real macOS user. VirtioFS file-sharing may show the correct
+# owner inside the container but still deny writes based on host-side permission checks.
+# Setting explicit chmod ensures the container can read/write regardless of UID mapping.
+
+# macOS: strip com.apple.provenance extended attributes that block chmod/chown.
+# Docker Desktop sets these on bind-mounted files; they prevent permission changes
+# even after chown reclaims ownership. Requires sudo to remove.
+if [[ "$(uname)" == "Darwin" ]]; then
+    sudo xattr -rc "$SCRIPT_DIR/openclaw-home" 2>/dev/null || true
+    sudo xattr -rc "$SCRIPT_DIR/logs" 2>/dev/null || true
+fi
+
+# Writable files: gateway config (auth token written on first start)
+sudo chmod 666 "$SCRIPT_DIR/openclaw-home/openclaw.json"
+# Writable backup/state files (may or may not exist yet)
+for f in "$SCRIPT_DIR/openclaw-home/openclaw.json.bak" "$SCRIPT_DIR/openclaw-home/update-check.json"; do
+    [[ -f "$f" ]] && sudo chmod 666 "$f"
+done
+# Writable directories: gateway runtime + agent memory/skills
+for d in agents canvas devices identity sandboxes skills tasks; do
+    sudo chmod -R 777 "$SCRIPT_DIR/openclaw-home/$d"
+done
+sudo chmod -R 777 "$SCRIPT_DIR/openclaw-home/workspace/memory"
+sudo chmod -R 777 "$SCRIPT_DIR/openclaw-home/workspace/skills"
+sudo chmod 666 "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
 
 # NOTE: Personality files (AGENTS.md, SOUL.md, USER.md, IDENTITY.md, TOOLS.md) and
-# credentials/ are intentionally NOT chowned — they stay host-owned (read-only to container).
+# credentials/ are intentionally NOT chowned or chmod'd — they stay host-owned (read-only to container).
 
 info "Directory structure ready (permissions set for container UID $CONTAINER_UID)"
 
@@ -323,6 +448,41 @@ else
     echo "  cp $SCRIPT_DIR/config/claude-settings.json $WORKSPACE_DIR/.claude/settings.json"
 fi
 
+# --- Sync model ID into openclaw.json ----------------------------------------
+
+# The model ID in openclaw.json must match what Ollama has installed.
+# .env is the source of truth — sync it into openclaw.json using jq.
+OPENCLAW_JSON="$SCRIPT_DIR/openclaw-home/openclaw.json"
+if [[ -f "$OPENCLAW_JSON" ]]; then
+    CURRENT_MODEL=$(jq -r '.models.providers.ollama.models[0].id // empty' "$OPENCLAW_JSON" 2>/dev/null)
+    if [[ "$CURRENT_MODEL" != "$OLLAMA_MODEL" ]]; then
+        # Generate a display name from the model ID (e.g., "qwen3.5:9b" -> "Qwen 3.5 9B")
+        MODEL_NAME=$(echo "$OLLAMA_MODEL" | sed 's/:/ /; s/\b\(.\)/\u\1/g; s/b$/B/')
+        jq --arg id "$OLLAMA_MODEL" --arg name "$MODEL_NAME" --arg primary "ollama/$OLLAMA_MODEL" \
+            '.models.providers.ollama.models[0].id = $id | .models.providers.ollama.models[0].name = $name | .agents.defaults.model.primary = $primary' \
+            "$OPENCLAW_JSON" > "${OPENCLAW_JSON}.tmp" && mv "${OPENCLAW_JSON}.tmp" "$OPENCLAW_JSON"
+        info "Model synced in openclaw.json: $CURRENT_MODEL -> $OLLAMA_MODEL"
+    else
+        info "Model in openclaw.json already matches .env ($OLLAMA_MODEL)"
+    fi
+    # Ensure default model is always set to Ollama (prevents fallback to Anthropic)
+    CURRENT_PRIMARY=$(jq -r '.agents.defaults.model.primary // empty' "$OPENCLAW_JSON" 2>/dev/null)
+    if [[ "$CURRENT_PRIMARY" != "ollama/$OLLAMA_MODEL" ]]; then
+        jq --arg primary "ollama/$OLLAMA_MODEL" \
+            '.agents.defaults.model.primary = $primary' \
+            "$OPENCLAW_JSON" > "${OPENCLAW_JSON}.tmp" && mv "${OPENCLAW_JSON}.tmp" "$OPENCLAW_JSON"
+        info "Default model set to ollama/$OLLAMA_MODEL"
+    fi
+    # Sync Ollama baseUrl (native mode uses host.docker.internal, docker mode uses ollama)
+    CURRENT_BASE_URL=$(jq -r '.models.providers.ollama.baseUrl // empty' "$OPENCLAW_JSON" 2>/dev/null)
+    if [[ "$CURRENT_BASE_URL" != "$OLLAMA_HOST" ]]; then
+        jq --arg url "$OLLAMA_HOST" \
+            '.models.providers.ollama.baseUrl = $url' \
+            "$OPENCLAW_JSON" > "${OPENCLAW_JSON}.tmp" && mv "${OPENCLAW_JSON}.tmp" "$OPENCLAW_JSON"
+        info "Ollama baseUrl synced: $CURRENT_BASE_URL -> $OLLAMA_HOST"
+    fi
+fi
+
 # --- Build & start Docker stack ----------------------------------------------
 
 step "Docker build & start"
@@ -336,9 +496,32 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
     export OPENCLAW_VERSION
     export REPO
 
+    # In native mode, ensure Ollama is running on the host before starting containers
+    if [[ "$OLLAMA_MODE" == "native" ]]; then
+        if ! curl -sf http://localhost:11434/api/tags &>/dev/null; then
+            info "Starting Ollama natively..."
+            OLLAMA_HOST= ollama serve &>/dev/null &
+            for i in $(seq 1 30); do
+                curl -sf http://localhost:11434/api/tags &>/dev/null && break
+                sleep 1
+            done
+        fi
+        if curl -sf http://localhost:11434/api/tags &>/dev/null; then
+            info "Ollama is running natively (Metal GPU enabled)"
+        else
+            warn "Ollama not responding at localhost:11434 — start manually: ollama serve"
+        fi
+    fi
+
+    # Build and start — in docker mode, activate the ollama profile
+    COMPOSE_PROFILES=""
+    if [[ "$OLLAMA_MODE" == "docker" ]]; then
+        COMPOSE_PROFILES="--profile docker-ollama"
+    fi
+
     cd "$SCRIPT_DIR/docker"
-    docker compose build --build-arg OPENCLAW_VERSION="$OPENCLAW_VERSION"
-    docker compose up -d
+    docker compose $COMPOSE_PROFILES build --build-arg OPENCLAW_VERSION="$OPENCLAW_VERSION"
+    docker compose $COMPOSE_PROFILES up -d
     info "Containers started"
 
     # Wait for gateway to become healthy (generates auth token on first start)
@@ -369,23 +552,39 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
             sleep 1
         done
         if [[ -n "$GATEWAY_TOKEN" ]]; then
-            info "Web UI ready at http://localhost:3000"
+            # Use URL fragment (#token=) instead of query param (?token=).
+            # Fragments are never sent to the server, never logged, and never
+            # appear in HTTP Referer headers — but browser JS can still read
+            # them for auto-pairing. The Control UI imports the token from the
+            # fragment into sessionStorage and strips it from the URL.
+            GATEWAY_URL="http://localhost:3000/#token=$GATEWAY_TOKEN"
+            info "Web UI ready at $GATEWAY_URL"
             echo ""
             echo "  Auth Token: $GATEWAY_TOKEN"
-            echo "  (paste this in the Web UI when prompted to pair)"
             echo ""
-            # Open browser to the Web UI (without token in URL to avoid leaking to browser history)
+            # Open browser with token in fragment for frictionless + secure pairing
             if command -v xdg-open &>/dev/null; then
-                xdg-open "http://localhost:3000" 2>/dev/null &
+                xdg-open "$GATEWAY_URL" 2>/dev/null &
             elif command -v open &>/dev/null; then
-                open "http://localhost:3000" 2>/dev/null &
+                open "$GATEWAY_URL" 2>/dev/null &
             fi
-            # Poll for browser pairing request and auto-approve it.
-            # The user opens the URL, clicks Connect, and this loop approves it.
-            info "Waiting for browser pairing (open the URL above and click Connect)..."
+            # Wait for browser to connect. With #token= in the URL, the browser
+            # authenticates directly (device goes straight to "paired", no pending request).
+            # Without a token, a pending request appears that needs manual approval.
+            info "Waiting for browser to connect..."
             PAIRED=false
             for i in $(seq 1 120); do
-                REQUEST_ID=$(docker exec zupee-claw openclaw devices list --json 2>/dev/null \
+                DEVICES_JSON=$(docker exec zupee-claw openclaw devices list --json 2>/dev/null)
+                # Check if browser already paired (token-based auth — no pending step)
+                PAIRED_DEVICE=$(echo "$DEVICES_JSON" \
+                    | jq -r '.paired[] | select(.clientId == "openclaw-control-ui") | .deviceId // empty' 2>/dev/null | head -1)
+                if [[ -n "$PAIRED_DEVICE" ]]; then
+                    info "Browser connected!"
+                    PAIRED=true
+                    break
+                fi
+                # Check for pending request (no-token flow — needs approval)
+                REQUEST_ID=$(echo "$DEVICES_JSON" \
                     | jq -r '.pending[] | select(.clientId == "openclaw-control-ui") | .requestId // empty' 2>/dev/null | head -1)
                 if [[ -n "$REQUEST_ID" ]]; then
                     docker exec zupee-claw openclaw devices approve "$REQUEST_ID" 2>/dev/null
@@ -396,8 +595,8 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
                 sleep 1
             done
             if [[ "$PAIRED" != "true" ]]; then
-                warn "No browser pairing within 2 minutes. Approve manually:"
-                echo "  docker exec zupee-claw openclaw devices approve --latest"
+                warn "No browser connection within 2 minutes. Open the URL manually:"
+                echo "  $GATEWAY_URL"
             fi
         else
             warn "Gateway token not generated after 30s"
@@ -405,26 +604,42 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
         fi
     fi
 
-    # Pull Qwen model — Ollama is on the isolated network (no internet),
-    # so we temporarily connect it to squid-egress for the download.
+    # Pull model
     echo ""
     read -rp "Pull $OLLAMA_MODEL model now? (this may take a while) [y/N] " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        info "Connecting Ollama to internet for model download..."
-        docker network connect zupee-claw_squid-egress zupee-ollama 2>/dev/null || true
-        info "Pulling $OLLAMA_MODEL... (this may take several minutes)"
-        if docker compose exec ollama ollama pull "$OLLAMA_MODEL"; then
-            info "$OLLAMA_MODEL ready"
+        if [[ "$OLLAMA_MODE" == "native" ]]; then
+            # Native mode: pull directly (host has internet access)
+            info "Pulling $OLLAMA_MODEL..."
+            # Unset OLLAMA_HOST — it's set to host.docker.internal for the container,
+            # but the native ollama CLI needs localhost (its default).
+            if OLLAMA_HOST= ollama pull "$OLLAMA_MODEL"; then
+                info "$OLLAMA_MODEL ready"
+            else
+                error "Failed to pull $OLLAMA_MODEL"
+            fi
         else
-            error "Failed to pull $OLLAMA_MODEL — check network or try again later"
+            # Docker mode: Ollama is air-gapped, temporarily connect to squid-egress
+            info "Connecting Ollama to internet for model download..."
+            docker network connect zupee-claw_squid-egress zupee-ollama 2>/dev/null || true
+            info "Pulling $OLLAMA_MODEL... (this may take several minutes)"
+            if docker compose $COMPOSE_PROFILES exec ollama ollama pull "$OLLAMA_MODEL"; then
+                info "$OLLAMA_MODEL ready"
+            else
+                error "Failed to pull $OLLAMA_MODEL — check network or try again later"
+            fi
+            info "Disconnecting Ollama from internet..."
+            docker network disconnect zupee-claw_squid-egress zupee-ollama 2>/dev/null || true
         fi
-        info "Disconnecting Ollama from internet..."
-        docker network disconnect zupee-claw_squid-egress zupee-ollama 2>/dev/null || true
     else
-        warn "Pull later with:"
-        echo "  docker network connect zupee-claw_squid-egress zupee-ollama"
-        echo "  docker exec zupee-ollama ollama pull $OLLAMA_MODEL"
-        echo "  docker network disconnect zupee-claw_squid-egress zupee-ollama"
+        if [[ "$OLLAMA_MODE" == "native" ]]; then
+            warn "Pull later with: ollama pull $OLLAMA_MODEL"
+        else
+            warn "Pull later with:"
+            echo "  docker network connect zupee-claw_squid-egress zupee-ollama"
+            echo "  docker exec zupee-ollama ollama pull $OLLAMA_MODEL"
+            echo "  docker network disconnect zupee-claw_squid-egress zupee-ollama"
+        fi
     fi
 
     cd "$SCRIPT_DIR"
@@ -445,10 +660,18 @@ else
     warn "Claw container: not running"
 fi
 
-if docker ps --format '{{.Names}}' | grep -q zupee-ollama; then
-    info "Ollama container: running"
+if [[ "$OLLAMA_MODE" == "native" ]]; then
+    if curl -sf http://localhost:11434/api/tags &>/dev/null; then
+        info "Ollama (native): running with Metal GPU"
+    else
+        warn "Ollama (native): not responding at localhost:11434"
+    fi
 else
-    warn "Ollama container: not running"
+    if docker ps --format '{{.Names}}' | grep -q zupee-ollama; then
+        info "Ollama container: running"
+    else
+        warn "Ollama container: not running"
+    fi
 fi
 
 if docker ps --format '{{.Names}}' | grep -q zupee-squid; then
@@ -503,17 +726,14 @@ echo "  Repo:        ${REPO:-'(not set)'}"
 echo "  Agent files: $SCRIPT_DIR/openclaw-home/workspace/"
 echo "  Logs:        $SCRIPT_DIR/logs/"
 echo ""
+if [[ -n "$GATEWAY_TOKEN" ]]; then
+echo "  Web UI:      http://localhost:3000/#token=$GATEWAY_TOKEN"
+echo ""
+echo "  (retrieve token later: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json)"
+else
 echo "  Web UI:      http://localhost:3000"
 echo ""
-if [[ -n "$GATEWAY_TOKEN" ]]; then
-echo "  Auth Token:  $GATEWAY_TOKEN"
-echo ""
-echo "  Open the Web UI and paste the token when prompted to pair."
-echo "  (retrieve later: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json)"
-else
-echo "  Next steps:"
-echo "    1. Open http://localhost:3000"
-echo "    2. Retrieve token: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json"
+echo "  Retrieve token: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json"
 fi
 echo ""
 echo "  To tear down: $SCRIPT_DIR/cleanup.sh"
