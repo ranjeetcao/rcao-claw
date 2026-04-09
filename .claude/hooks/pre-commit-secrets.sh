@@ -125,7 +125,7 @@ scan_content() {
   fi
 
   # SSH private key PEM headers
-  if echo "$content" | grep -qE '-----BEGIN.*PRIVATE KEY-----'; then
+  if echo "$content" | grep -qE -- '-----BEGIN.*PRIVATE KEY-----'; then
     file_violations="${file_violations}  - SSH/TLS private key (PEM header) detected"$'\n'
   fi
 
@@ -157,6 +157,11 @@ scan_content() {
 while IFS= read -r file; do
   [[ -z "$file" ]] && continue
 
+  # Skip the secret-scanning hook itself — it contains detection patterns, not actual secrets.
+  if [[ "$file" == ".claude/hooks/pre-commit-secrets.sh" ]]; then
+    continue
+  fi
+
   # Check for sensitive file types regardless of content
   if echo "$file" | grep -qE '\.pem$'; then
     VIOLATIONS="${VIOLATIONS}File: ${file}"$'\n'"  - PEM file staged for commit (likely contains private key material)"$'\n'
@@ -164,6 +169,10 @@ while IFS= read -r file; do
   fi
 
   if echo "$file" | grep -qE '\.env($|\.)'; then
+    # .env.example is a template — it's meant to be committed with placeholder values.
+    if echo "$file" | grep -qE '\.env\.example$'; then
+      continue
+    fi
     # .env files are almost always secrets
     if [[ -f "$file" ]]; then
       CONTENT="$(cat "$file" 2>/dev/null || true)"

@@ -55,13 +55,11 @@ fi
 
 step "Docker cleanup"
 
-if docker compose -f "$SCRIPT_DIR/docker/docker-compose.yml" ps -q 2>/dev/null | grep -q .; then
-    docker compose -f "$SCRIPT_DIR/docker/docker-compose.yml" down --rmi local --volumes --remove-orphans
+# Always attempt docker compose down — handles both running and stopped containers.
+if docker compose -f "$SCRIPT_DIR/docker/docker-compose.yml" down --rmi local --volumes --remove-orphans 2>&1; then
     info "Containers, images, and volumes removed"
 else
-    warn "No running containers found"
-    # Still try to clean up
-    docker compose -f "$SCRIPT_DIR/docker/docker-compose.yml" down --rmi local --volumes --remove-orphans 2>/dev/null || true
+    warn "Docker compose down had issues (containers may not have been running)"
 fi
 
 # Remove dangling images
@@ -156,19 +154,51 @@ fi
 
 step "Agent data & logs"
 
+# Reclaim ownership of files created by the container (UID 1001) so we can delete them.
+# Without this, rm fails on container-owned files like devices/paired.json.
+if [[ -d "$SCRIPT_DIR/openclaw-home" ]]; then
+    CONTAINER_OWNED=$(find "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs" -not -user "$(id -u)" 2>/dev/null | head -1)
+    if [[ -n "$CONTAINER_OWNED" ]]; then
+        warn "Some files are owned by the container user (UID 1001). Need sudo to reclaim."
+        if sudo chown -R "$(id -u):$(id -g)" "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs"; then
+            info "Reclaimed file ownership"
+        else
+            error "Failed to reclaim file ownership. Run manually:"
+            echo "  sudo chown -R \$(id -u):\$(id -g) $SCRIPT_DIR/openclaw-home $SCRIPT_DIR/logs"
+            echo ""
+            read -rp "Continue cleanup anyway? (some deletes may fail) [y/N] " confirm
+            if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+                echo "Aborted. Fix ownership first, then re-run cleanup."
+                exit 1
+            fi
+        fi
+    fi
+fi
+
+# Gateway runtime dirs (devices, sessions, sandboxes, etc.) — always clean these
+for d in agents canvas devices identity sandboxes tasks; do
+    if [[ -d "$SCRIPT_DIR/openclaw-home/$d" ]]; then
+        rm -rf "$SCRIPT_DIR/openclaw-home/$d" 2>/dev/null || \
+            warn "Could not fully remove openclaw-home/$d (permission issue)"
+    fi
+done
+info "Gateway runtime data cleaned (devices, sessions, etc.)"
+
 if [[ -d "$SCRIPT_DIR/openclaw-home/workspace" ]]; then
     echo ""
-    echo "Agent data includes: sessions, memory, skills, credentials"
+    echo "Agent data includes: memory, skills, credentials"
     echo "Location: $SCRIPT_DIR/openclaw-home/"
-    read -rp "Delete agent data (openclaw-home/)? This is IRREVERSIBLE. [y/N] " confirm
+    read -rp "Delete agent data? This is IRREVERSIBLE. [y/N] " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         read -rp "Are you sure? Type 'DELETE' to confirm: " confirm2
         if [[ "$confirm2" == "DELETE" ]]; then
-            rm -rf "$SCRIPT_DIR/openclaw-home/agents"
-            rm -rf "$SCRIPT_DIR/openclaw-home/credentials"
-            rm -rf "$SCRIPT_DIR/openclaw-home/skills"
-            rm -rf "$SCRIPT_DIR/openclaw-home/workspace/memory"
-            info "Agent runtime data deleted (workspace template files kept)"
+            rm -rf "$SCRIPT_DIR/openclaw-home/credentials" 2>/dev/null || \
+                warn "Could not fully remove credentials (permission issue)"
+            rm -rf "$SCRIPT_DIR/openclaw-home/skills" 2>/dev/null || \
+                warn "Could not fully remove skills (permission issue)"
+            rm -rf "$SCRIPT_DIR/openclaw-home/workspace/memory" 2>/dev/null || \
+                warn "Could not fully remove workspace/memory (permission issue)"
+            info "Agent data deleted (workspace template files kept)"
         else
             warn "Kept agent data"
         fi
@@ -177,7 +207,7 @@ if [[ -d "$SCRIPT_DIR/openclaw-home/workspace" ]]; then
     fi
 fi
 
-if [[ -d "$SCRIPT_DIR/logs" ]] && ls "$SCRIPT_DIR/logs"/*.log &>/dev/null 2>&1; then
+if [[ -d "$SCRIPT_DIR/logs" ]] && compgen -G "$SCRIPT_DIR/logs/*.log" &>/dev/null; then
     read -rp "Delete log files? [y/N] " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         rm -f "$SCRIPT_DIR/logs"/*.log
