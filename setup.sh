@@ -8,6 +8,46 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# --- Parse flags -------------------------------------------------------------
+AUTO_YES=false
+AUTO_ROLE=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --yes|-y) AUTO_YES=true; shift ;;
+        --role)   AUTO_ROLE="$2"; shift 2 ;;
+        --help|-h) echo "Usage: $0 [--yes] [--role developer|qa|marketing]"; exit 0 ;;
+        *) echo "Unknown: $1"; exit 1 ;;
+    esac
+done
+
+# Auto-confirm wrapper: returns 'y' in --yes mode, else prompts user
+ask() {
+    if [[ "$AUTO_YES" == "true" ]]; then
+        echo "y"
+    else
+        local reply
+        read -rp "$1" reply
+        echo "$reply"
+    fi
+}
+
+# Like ask(), but returns 'n' when running --yes without passwordless sudo.
+# Use for steps that require sudo (user creation, SSH config, etc.)
+ask_sudo() {
+    if [[ "$AUTO_YES" == "true" ]]; then
+        if sudo -n true 2>/dev/null; then
+            echo "y"
+        else
+            warn "Skipping (sudo requires password, running non-interactive)"
+            echo "n"
+        fi
+    else
+        local reply
+        read -rp "$1" reply
+        echo "$reply"
+    fi
+}
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -213,7 +253,11 @@ AVAILABLE_ROLES="${AVAILABLE_ROLES# }"
 echo ""
 echo "  Available roles:$( for r in $AVAILABLE_ROLES; do echo -n " [$r]"; done )"
 echo ""
-read -rp "Select your role: " ROLE
+if [[ -n "$AUTO_ROLE" ]]; then
+    ROLE="$AUTO_ROLE"
+else
+    read -rp "Select your role: " ROLE
+fi
 
 # Validate role
 if [[ -z "$ROLE" ]] || [[ ! -d "$SCRIPT_DIR/personality/$ROLE" ]]; then
@@ -235,27 +279,19 @@ chmod 775 "$SCRIPT_DIR/logs"
 # Create OpenClaw home at ~/.openclaw (outside the repo)
 mkdir -p "$OPENCLAW_HOME/workspace"
 
-# Reclaim any files from previous container runs (owned by UID 1001)
+# If ~/.openclaw has container-owned files (UID 1001), delete and recreate.
+# This avoids macOS TCC popups from find/chown on Docker-owned files.
 if [[ -d "$OPENCLAW_HOME" ]]; then
-    FOREIGN_FILES=$(find "$OPENCLAW_HOME" -not -user "$(id -u)" 2>/dev/null | head -1)
-    if [[ -n "$FOREIGN_FILES" ]]; then
-        warn "Found files from a previous container run. Reclaiming ownership (requires sudo)..."
-        if sudo chown -R "$(id -u):$(id -g)" "$OPENCLAW_HOME"; then
-            info "Ownership reclaimed"
-        else
-            error "Failed to reclaim. Run: sudo chown -R \$(id -u):\$(id -g) $OPENCLAW_HOME"
-            exit 1
-        fi
-    fi
+    # Try removing container-created subdirs that may have wrong ownership
+    rm -rf "$OPENCLAW_HOME/agents" "$OPENCLAW_HOME/canvas" "$OPENCLAW_HOME/devices" \
+           "$OPENCLAW_HOME/identity" "$OPENCLAW_HOME/sandboxes" "$OPENCLAW_HOME/tasks" \
+           "$OPENCLAW_HOME/flows" "$OPENCLAW_HOME/memory" "$OPENCLAW_HOME/logs" \
+           "$OPENCLAW_HOME/cron" 2>/dev/null || true
 fi
 
-# macOS: strip extended attributes that block chmod
-if [[ "$(uname)" == "Darwin" ]]; then
-    sudo xattr -rc "$OPENCLAW_HOME" 2>/dev/null || true
-fi
-
-# Make the entire directory writable (OpenClaw gateway manages everything here)
-chmod -R 755 "$OPENCLAW_HOME"
+# Ensure directory exists and is writable
+mkdir -p "$OPENCLAW_HOME/workspace"
+chmod -R 755 "$OPENCLAW_HOME" 2>/dev/null || true
 
 # Copy personality files: shared + role-specific → ~/.openclaw/workspace/
 info "Installing personality files for role: $ROLE"
@@ -319,7 +355,7 @@ if id "$OPENCLAW_USER" &>/dev/null; then
 else
     echo ""
     warn "This step requires sudo to create a restricted user."
-    read -rp "Create user '$OPENCLAW_USER' with restricted shell? [y/N] " confirm
+    confirm=$(ask_sudo "Create user '$OPENCLAW_USER' with restricted shell? [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         # macOS vs Linux
         if [[ "$(uname)" == "Darwin" ]]; then
@@ -349,16 +385,16 @@ fi
 step "SSH authorized_keys"
 
 if id "$OPENCLAW_USER" &>/dev/null; then
-    OPENCLAW_HOME=$(eval echo "~$OPENCLAW_USER")
-    SSH_DIR="$OPENCLAW_HOME/.ssh"
+    BOT_HOME=$(eval echo "~$OPENCLAW_USER")
+    SSH_DIR="$BOT_HOME/.ssh"
     PUBKEY=$(cat "$SSH_KEY.pub")
-    GATEWAY_PATH="$OPENCLAW_HOME/openclaw/bin/ssh-gateway.sh"
+    GATEWAY_PATH="$BOT_HOME/openclaw/bin/ssh-gateway.sh"
 
     AUTHORIZED_LINE="command=\"$GATEWAY_PATH\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty $PUBKEY"
 
     echo ""
     warn "This step requires sudo to write to $SSH_DIR/authorized_keys"
-    read -rp "Install SSH key for '$OPENCLAW_USER'? [y/N] " confirm
+    confirm=$(ask_sudo "Install SSH key for '$OPENCLAW_USER'? [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         sudo mkdir -p "$SSH_DIR"
         echo "$AUTHORIZED_LINE" | sudo tee "$SSH_DIR/authorized_keys" > /dev/null
@@ -372,15 +408,15 @@ if id "$OPENCLAW_USER" &>/dev/null; then
     fi
 
     # Symlink bin/ scripts to openclaw-bot's home
-    OPENCLAW_BOT_BIN="$OPENCLAW_HOME/openclaw/bin"
+    OPENCLAW_BOT_BIN="$BOT_HOME/openclaw/bin"
     if [[ ! -L "$OPENCLAW_BOT_BIN" ]] && [[ ! -d "$OPENCLAW_BOT_BIN" ]]; then
-        read -rp "Symlink scripts to $OPENCLAW_BOT_BIN? [y/N] " confirm
+        confirm=$(ask_sudo "Symlink scripts to $OPENCLAW_BOT_BIN? [y/N] ")
         if [[ "$confirm" =~ ^[Yy]$ ]]; then
-            sudo mkdir -p "$OPENCLAW_HOME/openclaw"
+            sudo mkdir -p "$BOT_HOME/openclaw"
             sudo ln -sf "$SCRIPT_DIR/bin" "$OPENCLAW_BOT_BIN"
             sudo chown -h "$OPENCLAW_USER" "$OPENCLAW_BOT_BIN"
             # Also link .env so scripts can source it
-            sudo ln -sf "$SCRIPT_DIR/.env" "$OPENCLAW_HOME/openclaw/.env"
+            sudo ln -sf "$SCRIPT_DIR/.env" "$BOT_HOME/openclaw/.env"
             info "Scripts symlinked"
         fi
     else
@@ -399,11 +435,11 @@ SSHD_CONF="/etc/ssh/sshd_config.d/openclaw.conf"
 if [[ -f "$SSHD_CONF" ]]; then
     warn "SSH config already exists at $SSHD_CONF (skipping)"
 else
-    read -rp "Install SSH hardening config to $SSHD_CONF? [y/N] " confirm
+    confirm=$(ask_sudo "Install SSH hardening config to $SSHD_CONF? [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         # Generate config with correct path for this OS
-        OPENCLAW_HOME=$(eval echo "~$OPENCLAW_USER")
-        GATEWAY_CMD="$OPENCLAW_HOME/openclaw/bin/ssh-gateway.sh"
+        BOT_HOME=$(eval echo "~$OPENCLAW_USER")
+        GATEWAY_CMD="$BOT_HOME/openclaw/bin/ssh-gateway.sh"
         cat > /tmp/openclaw-sshd.conf <<SSHD_EOF
 # Claw SSH hardening - auto-generated by setup.sh
 Match User $OPENCLAW_USER
@@ -464,7 +500,7 @@ step "Docker build & start"
 echo "Claw version: $OPENCLAW_VERSION"
 echo "Default repo: ${REPO:-'(not set)'}"
 echo ""
-read -rp "Build and start Docker containers? [y/N] " confirm
+confirm=$(ask "Build and start Docker containers? [y/N] ")
 if [[ "$confirm" =~ ^[Yy]$ ]]; then
     # Export vars for docker-compose interpolation
     export OPENCLAW_VERSION
@@ -501,10 +537,18 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
     # We use `docker compose run --rm --entrypoint ""` to run onboard as a one-shot
     # command without triggering the gateway entrypoint.
     info "Configuring OpenClaw with Ollama ($OLLAMA_MODEL)..."
-    # Temporarily widen permissions for onboard (container UID 1001 needs write access).
-    # Tightened back to 775 after onboard completes.
-    chmod -R 775 "$OPENCLAW_HOME" 2>/dev/null || true
-    if docker compose $COMPOSE_PROFILES run --rm --entrypoint "" \
+    # Pre-create directories that onboard needs to write to.
+    # On macOS Docker Desktop, directories created by Docker have restrictive
+    # xattrs (com.docker.grpcfuse.ownership) that override chmod. Creating them
+    # from the host side avoids this.
+    mkdir -p "$OPENCLAW_HOME/agents/main/agent" \
+             "$OPENCLAW_HOME/agents/main/sessions" \
+             "$OPENCLAW_HOME/credentials" \
+             "$OPENCLAW_HOME/workspace"
+    # Note: dirs are pre-created from host side above, so Docker xattrs
+    # are not present. No xattr stripping needed.
+    chmod -R 777 "$OPENCLAW_HOME" 2>/dev/null || true
+    if docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
         -e OLLAMA_HOST="$OLLAMA_HOST" -e OPENCLAW_HOME= \
         openclaw \
         openclaw onboard \
@@ -517,18 +561,17 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
             --gateway-port 3000 \
             --mode local \
             --accept-risk \
-            --skip-health \
-            2>/dev/null; then
+            --skip-health; then
         info "OpenClaw configured with ollama/$OLLAMA_MODEL"
     else
         warn "Onboarding returned non-zero — check with: docker exec zupee-claw openclaw doctor"
     fi
 
     # Apply agent defaults (timeout for CPU inference, thinking level)
-    docker compose $COMPOSE_PROFILES run --rm --entrypoint "" \
+    docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
         -e OPENCLAW_HOME= \
         openclaw openclaw config set agents.defaults.timeoutSeconds 300 2>/dev/null || true
-    docker compose $COMPOSE_PROFILES run --rm --entrypoint "" \
+    docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
         -e OPENCLAW_HOME= \
         openclaw openclaw config set agents.defaults.thinkingDefault low 2>/dev/null || true
 
@@ -578,15 +621,19 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
             echo ""
             echo "  Auth Token: $GATEWAY_TOKEN"
             echo ""
-            # Open browser with token in fragment for frictionless + secure pairing
-            if command -v xdg-open &>/dev/null; then
-                xdg-open "$GATEWAY_URL" 2>/dev/null &
-            elif command -v open &>/dev/null; then
-                open "$GATEWAY_URL" 2>/dev/null &
+            # Open browser (skip in non-interactive mode)
+            if [[ "$AUTO_YES" != "true" ]]; then
+                if command -v xdg-open &>/dev/null; then
+                    xdg-open "$GATEWAY_URL" 2>/dev/null &
+                elif command -v open &>/dev/null; then
+                    open "$GATEWAY_URL" 2>/dev/null &
+                fi
             fi
-            # Wait for browser to connect. With #token= in the URL, the browser
-            # authenticates directly (device goes straight to "paired", no pending request).
-            # Without a token, a pending request appears that needs manual approval.
+            # Wait for browser to connect (skip in non-interactive mode)
+            if [[ "$AUTO_YES" == "true" ]]; then
+                info "Skipping browser pairing (non-interactive mode)"
+                info "Open manually: $GATEWAY_URL"
+            else
             info "Waiting for browser to connect..."
             PAIRED=false
             for i in $(seq 1 120); do
@@ -614,6 +661,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
                 warn "No browser connection within 2 minutes. Open the URL manually:"
                 echo "  $GATEWAY_URL"
             fi
+            fi  # end AUTO_YES skip
         else
             warn "Gateway token not generated after 30s"
             warn "Retrieve token: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json"
@@ -622,7 +670,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
 
     # Pull model
     echo ""
-    read -rp "Pull $OLLAMA_MODEL model now? (this may take a while) [y/N] " confirm
+    confirm=$(ask "Pull $OLLAMA_MODEL model now? (this may take a while) [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         if [[ "$OLLAMA_MODE" == "native" ]]; then
             # Native mode: pull directly (host has internet access)
@@ -704,8 +752,8 @@ else
 fi
 
 # Check Slack tokens
-SLACK_BOT=$(grep '^SLACK_BOT_TOKEN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
-SLACK_APP=$(grep '^SLACK_APP_TOKEN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
+SLACK_BOT=$(grep '^SLACK_BOT_TOKEN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+SLACK_APP=$(grep '^SLACK_APP_TOKEN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
 if [[ -n "$SLACK_BOT" ]] && [[ -n "$SLACK_APP" ]]; then
     info "Slack tokens: configured (Socket Mode)"
 elif [[ -n "$SLACK_BOT" ]]; then

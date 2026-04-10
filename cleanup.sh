@@ -8,6 +8,44 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Non-interactive mode
+AUTO_YES=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --yes|-y) AUTO_YES=true; shift ;;
+        --help|-h) echo "Usage: $0 [--yes]"; exit 0 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+confirm_prompt() {
+    local prompt_text="$1"
+    if [[ "$AUTO_YES" == "true" ]]; then
+        echo "y"
+        return
+    fi
+    local reply
+    read -rp "$prompt_text" reply
+    echo "$reply"
+}
+
+# Like confirm_prompt, but returns 'n' in --yes mode when sudo needs a password
+confirm_sudo() {
+    local prompt_text="$1"
+    if [[ "$AUTO_YES" == "true" ]]; then
+        if sudo -n true 2>/dev/null; then
+            echo "y"
+        else
+            warn "Skipping (sudo requires password, running non-interactive)"
+            echo "n"
+        fi
+        return
+    fi
+    local reply
+    read -rp "$prompt_text" reply
+    echo "$reply"
+}
+
 # Parse .env safely (no source — prevents code injection)
 ENV_FILE="$SCRIPT_DIR/.env"
 OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
@@ -64,7 +102,7 @@ echo "  - OpenClaw home: $OPENCLAW_HOME"
 echo ""
 echo -e "${YELLOW}Agent data (memory, credentials) in ~/.openclaw will be KEPT unless you choose to delete.${NC}"
 echo ""
-read -rp "Proceed with cleanup? [y/N] " confirm
+confirm=$(confirm_prompt "Proceed with cleanup? [y/N] ")
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     echo "Aborted."
     exit 0
@@ -75,7 +113,7 @@ fi
 if [[ "$OLLAMA_MODE" == "native" ]]; then
     step "Native Ollama cleanup"
     if pgrep -f "ollama serve" &>/dev/null; then
-        read -rp "Stop native Ollama process? [y/N] " confirm
+        confirm=$(confirm_prompt "Stop native Ollama process? [y/N] ")
         if [[ "$confirm" =~ ^[Yy]$ ]]; then
             pkill -f "ollama serve" 2>/dev/null || true
             info "Ollama stopped"
@@ -114,7 +152,7 @@ step "SSH cleanup"
 
 SSHD_CONF="/etc/ssh/sshd_config.d/openclaw.conf"
 if [[ -f "$SSHD_CONF" ]]; then
-    read -rp "Remove SSH hardening config ($SSHD_CONF)? [y/N] " confirm
+    confirm=$(confirm_sudo "Remove SSH hardening config ($SSHD_CONF)? [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         sudo rm -f "$SSHD_CONF"
         if [[ "$(uname)" != "Darwin" ]]; then
@@ -132,7 +170,7 @@ fi
 
 SSH_KEY="$SCRIPT_DIR/config/openclaw-docker-key"
 if [[ -f "$SSH_KEY" ]]; then
-    read -rp "Remove SSH keypair? [y/N] " confirm
+    confirm=$(confirm_prompt "Remove SSH keypair? [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         rm -f "$SSH_KEY" "$SSH_KEY.pub"
         info "SSH keypair removed"
@@ -149,7 +187,7 @@ step "Host user cleanup"
 
 OPENCLAW_USER="openclaw-bot"
 if id "$OPENCLAW_USER" &>/dev/null; then
-    read -rp "Remove user '$OPENCLAW_USER' and their home directory? [y/N] " confirm
+    confirm=$(confirm_sudo "Remove user '$OPENCLAW_USER' and their home directory? [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         if [[ "$(uname)" == "Darwin" ]]; then
             BOT_HOME=$(dscl . -read /Users/$OPENCLAW_USER NFSHomeDirectory 2>/dev/null | awk '{print $2}')
@@ -180,7 +218,7 @@ fi
 
 CLAUDE_SETTINGS="$WORKSPACE_DIR/.claude/settings.json"
 if [[ -f "$CLAUDE_SETTINGS" ]]; then
-    read -rp "Remove Claude Code settings from $WORKSPACE_DIR/.claude/? [y/N] " confirm
+    confirm=$(confirm_prompt "Remove Claude Code settings from $WORKSPACE_DIR/.claude/? [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         rm -f "$CLAUDE_SETTINGS"
         rmdir "$WORKSPACE_DIR/.claude" 2>/dev/null || true
@@ -197,19 +235,22 @@ fi
 step "OpenClaw home cleanup"
 
 if [[ -d "$OPENCLAW_HOME" ]]; then
-    # Reclaim ownership of container-created files
-    CONTAINER_OWNED=$(find "$OPENCLAW_HOME" -not -user "$(id -u)" 2>/dev/null | head -1)
-    if [[ -n "$CONTAINER_OWNED" ]]; then
-        warn "Some files are owned by the container user (UID 1001). Need sudo to reclaim."
-        sudo chown -R "$(id -u):$(id -g)" "$OPENCLAW_HOME" 2>/dev/null || true
-    fi
+    # Remove container-created subdirs that may have Docker ownership
+    rm -rf "$OPENCLAW_HOME/agents" "$OPENCLAW_HOME/canvas" "$OPENCLAW_HOME/devices" \
+           "$OPENCLAW_HOME/identity" "$OPENCLAW_HOME/sandboxes" "$OPENCLAW_HOME/tasks" \
+           "$OPENCLAW_HOME/flows" "$OPENCLAW_HOME/memory" "$OPENCLAW_HOME/logs" \
+           "$OPENCLAW_HOME/cron" 2>/dev/null || true
 
     echo ""
     echo "  OpenClaw home: $OPENCLAW_HOME"
     echo "  Contains: personality files, agent sessions, credentials, gateway config"
-    read -rp "Delete OpenClaw home? This is IRREVERSIBLE. [y/N] " confirm
+    confirm=$(confirm_prompt "Delete OpenClaw home? This is IRREVERSIBLE. [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        read -rp "Are you sure? Type 'DELETE' to confirm: " confirm2
+        if [[ "$AUTO_YES" == "true" ]]; then
+            confirm2="DELETE"
+        else
+            read -rp "Are you sure? Type 'DELETE' to confirm: " confirm2
+        fi
         if [[ "$confirm2" == "DELETE" ]]; then
             rm -rf "$OPENCLAW_HOME"
             info "OpenClaw home deleted: $OPENCLAW_HOME"
@@ -226,7 +267,7 @@ fi
 # --- Logs cleanup -----------------------------------------------------------
 
 if [[ -d "$SCRIPT_DIR/logs" ]] && compgen -G "$SCRIPT_DIR/logs/*.log" &>/dev/null; then
-    read -rp "Delete log files? [y/N] " confirm
+    confirm=$(confirm_prompt "Delete log files? [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         rm -f "$SCRIPT_DIR/logs"/*.log
         rm -rf "$SCRIPT_DIR/logs/squid"
