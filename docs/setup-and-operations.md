@@ -281,24 +281,55 @@ Benchmarks run on **Apple M4 Pro** (14 CPUs, 20 GPU cores, 24 GB RAM) using nati
 | qwen3.5:4b | 4B | 3.4 GB | 38.5 | 6.59s | 11.34s (10.07s load) | 3/3 | ★★★ Excellent |
 | qwen3.5:9b | 9B | 6.6 GB | 28.6 | 9.84s | 6.50s (4.53s load) | 3/3 | ★★☆ Good |
 
+### Quality Test Results (2026-04-10)
+
+Beyond speed, we test models on 6 real-world capability categories that reflect daily developer and QA workflows. 58 total points across 15 tests.
+
+| Model | Planning | Code Gen | Bug Detection | Instructions | Communication | Reasoning | Total |
+|-------|----------|----------|---------------|--------------|---------------|-----------|-------|
+| qwen3:8b | 6/7 | 14/14 | 9/9 | 9/9 | 10/10 | 9/9 | **57/58 (98%)** |
+| **qwen3.5:4b** | **7/7** | **14/14** | **9/9** | **9/9** | **10/10** | **9/9** | **58/58 (100%)** |
+| **qwen3.5:9b** | **7/7** | **14/14** | **9/9** | **9/9** | **10/10** | **9/9** | **58/58 (100%)** |
+
+**Test categories explained:**
+
+| Category | Tests | What It Measures |
+|----------|-------|------------------|
+| Planning (7 pts) | Feature decomposition, risk identification | Can the model break tasks into steps and spot risks? |
+| Code Gen (14 pts) | Function with constraints, test generation, code modification | Can it write code that follows specs, generate tests, modify existing code? |
+| Bug Detection (9 pts) | SQL injection, race conditions, error diagnosis | Can it spot security bugs, concurrency issues, and diagnose errors? |
+| Instructions (9 pts) | Format constraints, system prompt adherence, safety refusal | Does it follow output formats, obey system prompts, refuse dangerous requests? |
+| Communication (10 pts) | PR descriptions, Slack bug reports, diff summarization | Can it write concise, actionable messages for team communication? |
+| Reasoning (9 pts) | Tradeoff analysis, bug prioritization, root cause analysis | Can it reason about choices, prioritize, and diagnose production issues? |
+
 ### Key Findings
 
-- **qwen3:8b** is the fastest model overall at 45.5 tok/s with the lowest latency (3.96s avg) and fastest cold start (3.59s). Best all-round pick for this hardware.
-- **qwen3.5:4b** offers a good balance — smaller disk footprint (3.4 GB) with solid throughput (38.5 tok/s), though cold start is slower (11.34s).
-- **qwen3.5:9b** has the highest quality responses (longer, more detailed) but is the slowest at 28.6 tok/s. Better suited for machines with more memory/GPU headroom.
-- All three models passed all quality checks (greeting, coding with `def`, reasoning with correct answer of 9).
+- **qwen3:8b** is the fastest model at 45.5 tok/s with lowest latency (3.96s), scoring 98% quality. Best pick when speed matters — the 1-point miss was in task decomposition (didn't list all endpoints explicitly).
+- **qwen3.5:4b** hits the sweet spot for 16GB RAM laptops — perfect 100% quality, smallest disk (3.4 GB), solid 38.5 tok/s. Recommended default for resource-constrained machines.
+- **qwen3.5:9b** also scores 100% quality but is notably slower at 28.6 tok/s. The extra parameters don't add measurable quality on these tests but cost 40% more latency. Better suited for 32GB+ machines.
+- All three models are **Strong** rated — reliable as daily drivers for developer and QA workflows.
+
+### Recommendation by Hardware
+
+| RAM | Recommended Model | Rationale |
+|-----|-------------------|-----------|
+| 16 GB | **qwen3.5:4b** | 100% quality, 3.4 GB disk, leaves room for IDE + Docker |
+| 18-24 GB | **qwen3:8b** | 98% quality, fastest throughput (45.5 tok/s) |
+| 32 GB+ | **qwen3.5:9b** | 100% quality, best for complex reasoning tasks at scale |
 
 ### Running Benchmarks
 
 ```bash
-# Benchmark all candidate models
-./bin/benchmark-models.sh
+# Speed benchmarks (latency, throughput, cold start)
+./bin/benchmark-models.sh                    # All candidate models
+./bin/benchmark-models.sh qwen3:8b           # Specific model
+./bin/benchmark-models.sh --installed        # Installed only
 
-# Benchmark a specific model
-./bin/benchmark-models.sh qwen3:8b
-
-# Benchmark only installed models
-./bin/benchmark-models.sh --installed
+# Quality tests (6 capability categories, 15 tests)
+./bin/quality-tests.sh                       # Current model from .env
+./bin/quality-tests.sh qwen3:8b              # Specific model
+./bin/quality-tests.sh --all                 # All candidate models
+./bin/quality-tests.sh --category bugs       # Single category
 ```
 
 ## Slack Integration
