@@ -172,117 +172,121 @@ else
     fi
 fi
 
-# Persist calculated resource limits to .env so that standalone
-# 'docker compose up' picks them up (compose reads .env automatically).
-# Always persist OLLAMA_HOST and mode; only persist resource limits in docker mode
-PERSIST_VARS="CLAW_MEM CLAW_CPUS OLLAMA_HOST OLLAMA_MODE"
-if [[ "$OLLAMA_MODE" == "docker" ]]; then
-    PERSIST_VARS="$PERSIST_VARS OLLAMA_MEM OLLAMA_CPUS"
-fi
-for VAR_NAME in $PERSIST_VARS; do
-    VAR_VAL="${!VAR_NAME}"
-    if grep -q "^${VAR_NAME}=" "$ENV_FILE" 2>/dev/null; then
-        # Update existing value
-        sed -i.bak "s|^${VAR_NAME}=.*|${VAR_NAME}=${VAR_VAL}|" "$ENV_FILE"
+# Helper to persist a variable to .env for docker-compose interpolation
+persist_env_var() {
+    local name="$1" val="$2"
+    if grep -q "^${name}=" "$ENV_FILE" 2>/dev/null; then
+        sed -i.bak "s|^${name}=.*|${name}=${val}|" "$ENV_FILE"
     else
-        # Append new value
-        echo "${VAR_NAME}=${VAR_VAL}" >> "$ENV_FILE"
+        echo "${name}=${val}" >> "$ENV_FILE"
     fi
-done
+}
+
+# Persist resource limits and mode to .env
+persist_env_var CLAW_MEM "$CLAW_MEM"
+persist_env_var CLAW_CPUS "$CLAW_CPUS"
+persist_env_var OLLAMA_HOST "$OLLAMA_HOST"
+persist_env_var OLLAMA_MODE "$OLLAMA_MODE"
+if [[ "$OLLAMA_MODE" == "docker" ]]; then
+    persist_env_var OLLAMA_MEM "$OLLAMA_MEM"
+    persist_env_var OLLAMA_CPUS "$OLLAMA_CPUS"
+fi
 rm -f "${ENV_FILE}.bak"
 info "Resource limits written to .env"
 
-# --- Create host directories -------------------------------------------------
+# --- Select role & create directories ----------------------------------------
+
+step "Role selection"
+
+OPENCLAW_HOME="$HOME/.openclaw"
+export OPENCLAW_HOME
+
+# Available roles from personality/ directory
+AVAILABLE_ROLES=""
+for d in "$SCRIPT_DIR/personality"/*/; do
+    role=$(basename "$d")
+    [[ "$role" == "shared" ]] && continue
+    AVAILABLE_ROLES="$AVAILABLE_ROLES $role"
+done
+AVAILABLE_ROLES="${AVAILABLE_ROLES# }"
+
+echo ""
+echo "  Available roles:$( for r in $AVAILABLE_ROLES; do echo -n " [$r]"; done )"
+echo ""
+read -rp "Select your role: " ROLE
+
+# Validate role
+if [[ -z "$ROLE" ]] || [[ ! -d "$SCRIPT_DIR/personality/$ROLE" ]]; then
+    error "Invalid role '$ROLE'. Available: $AVAILABLE_ROLES"
+    exit 1
+fi
+info "Role selected: $ROLE"
 
 step "Creating directories"
 
-# Reclaim any files left by a previous container run (owned by UID 1001) FIRST.
-# This must happen before mkdir/touch — on re-runs, container-owned files block those operations.
-CONTAINER_UID=1001
-CONTAINER_GID=1001
+# Create log directories
+mkdir -p "$SCRIPT_DIR/logs"
+mkdir -p "$SCRIPT_DIR/logs/squid"
+chmod 777 "$SCRIPT_DIR/logs/squid"
+chmod 777 "$SCRIPT_DIR/logs"
 
-if [[ -d "$SCRIPT_DIR/openclaw-home" ]] || [[ -d "$SCRIPT_DIR/logs" ]]; then
-    FOREIGN_FILES=$(find "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs" -not -user "$(id -u)" 2>/dev/null | head -1)
+# Create OpenClaw home at ~/.openclaw (outside the repo)
+mkdir -p "$OPENCLAW_HOME/workspace"
+
+# Reclaim any files from previous container runs (owned by UID 1001)
+if [[ -d "$OPENCLAW_HOME" ]]; then
+    FOREIGN_FILES=$(find "$OPENCLAW_HOME" -not -user "$(id -u)" 2>/dev/null | head -1)
     if [[ -n "$FOREIGN_FILES" ]]; then
         warn "Found files from a previous container run. Reclaiming ownership (requires sudo)..."
-        if sudo chown -R "$(id -u):$(id -g)" "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs"; then
+        if sudo chown -R "$(id -u):$(id -g)" "$OPENCLAW_HOME"; then
             info "Ownership reclaimed"
         else
-            error "Failed to reclaim file ownership. Run manually:"
-            echo "  sudo chown -R \$(id -u):\$(id -g) $SCRIPT_DIR/openclaw-home $SCRIPT_DIR/logs"
+            error "Failed to reclaim. Run: sudo chown -R \$(id -u):\$(id -g) $OPENCLAW_HOME"
             exit 1
         fi
     fi
 fi
 
-mkdir -p "$SCRIPT_DIR/logs"
-mkdir -p "$SCRIPT_DIR/logs/squid"
-mkdir -p "$SCRIPT_DIR/openclaw-home/agents/main/sessions"
-mkdir -p "$SCRIPT_DIR/openclaw-home/credentials"
-mkdir -p "$SCRIPT_DIR/openclaw-home/skills"
-mkdir -p "$SCRIPT_DIR/openclaw-home/workspace/memory"
-mkdir -p "$SCRIPT_DIR/openclaw-home/workspace/skills"
-
-# Create MEMORY.md if missing (docker bind-mounts it as a file)
-touch "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
-
-# Create gateway runtime directories (written to on first start)
-for d in canvas devices identity sandboxes tasks; do
-    mkdir -p "$SCRIPT_DIR/openclaw-home/$d"
-done
-
-# Squid runs as proxy user (UID 13) — needs write access to mounted log dir
-chmod 777 "$SCRIPT_DIR/logs/squid"
-chmod 777 "$SCRIPT_DIR/logs"
-
-# Parent directory must be traversable by the container user.
-# Without this, the container cannot reach any subdirectory even if they are properly owned.
-chmod 755 "$SCRIPT_DIR/openclaw-home"
-
-# Gateway config — writable (gateway writes auth token and auto-migrates on first start)
-sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/openclaw.json" 2>/dev/null || true
-
-# Gateway runtime dirs — writable
-for d in agents canvas devices identity sandboxes skills tasks; do
-    sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/$d" 2>/dev/null || true
-done
-
-# Workspace writable dirs (memory, skills, MEMORY.md)
-sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/memory" 2>/dev/null || true
-sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/skills" 2>/dev/null || true
-sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md" 2>/dev/null || true
-
-# chmod fallback — on macOS with Docker Desktop, chown to UID 1001 is unreliable because
-# that UID doesn't exist as a real macOS user. VirtioFS file-sharing may show the correct
-# owner inside the container but still deny writes based on host-side permission checks.
-# Setting explicit chmod ensures the container can read/write regardless of UID mapping.
-
-# macOS: strip com.apple.provenance extended attributes that block chmod/chown.
-# Docker Desktop sets these on bind-mounted files; they prevent permission changes
-# even after chown reclaims ownership. Requires sudo to remove.
+# macOS: strip extended attributes that block chmod
 if [[ "$(uname)" == "Darwin" ]]; then
-    sudo xattr -rc "$SCRIPT_DIR/openclaw-home" 2>/dev/null || true
-    sudo xattr -rc "$SCRIPT_DIR/logs" 2>/dev/null || true
+    sudo xattr -rc "$OPENCLAW_HOME" 2>/dev/null || true
 fi
 
-# Writable files: gateway config (auth token written on first start)
-sudo chmod 666 "$SCRIPT_DIR/openclaw-home/openclaw.json"
-# Writable backup/state files (may or may not exist yet)
-for f in "$SCRIPT_DIR/openclaw-home/openclaw.json.bak" "$SCRIPT_DIR/openclaw-home/update-check.json"; do
-    [[ -f "$f" ]] && sudo chmod 666 "$f"
-done
-# Writable directories: gateway runtime + agent memory/skills
-for d in agents canvas devices identity sandboxes skills tasks; do
-    sudo chmod -R 777 "$SCRIPT_DIR/openclaw-home/$d"
-done
-sudo chmod -R 777 "$SCRIPT_DIR/openclaw-home/workspace/memory"
-sudo chmod -R 777 "$SCRIPT_DIR/openclaw-home/workspace/skills"
-sudo chmod 666 "$SCRIPT_DIR/openclaw-home/workspace/MEMORY.md"
+# Make the entire directory writable (OpenClaw gateway manages everything here)
+chmod -R 755 "$OPENCLAW_HOME"
 
-# NOTE: Personality files (AGENTS.md, SOUL.md, USER.md, IDENTITY.md, TOOLS.md) and
-# credentials/ are intentionally NOT chowned or chmod'd — they stay host-owned (read-only to container).
+# Copy personality files: shared + role-specific → ~/.openclaw/workspace/
+info "Installing personality files for role: $ROLE"
+for f in "$SCRIPT_DIR/personality/shared"/*.md; do
+    [[ -f "$f" ]] && cp "$f" "$OPENCLAW_HOME/workspace/"
+done
+for f in "$SCRIPT_DIR/personality/$ROLE"/*.md; do
+    [[ -f "$f" ]] && cp "$f" "$OPENCLAW_HOME/workspace/"
+done
+info "Personality files installed at $OPENCLAW_HOME/workspace/"
 
-info "Directory structure ready (permissions set for container UID $CONTAINER_UID)"
+# Seed minimal openclaw.json if missing — the gateway needs this to start.
+# openclaw onboard will configure it properly after the gateway is up.
+if [[ ! -f "$OPENCLAW_HOME/openclaw.json" ]]; then
+    cat > "$OPENCLAW_HOME/openclaw.json" << SEED_EOF
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "custom",
+    "customBindHost": "0.0.0.0",
+    "port": 3000
+  }
+}
+SEED_EOF
+    info "Seeded minimal openclaw.json"
+fi
+
+# Persist OPENCLAW_HOME for docker-compose volume mount interpolation.
+# Note: this is also loaded into the container via env_file, but OpenClaw
+# inside the container ignores it (it uses ~/.openclaw by default).
+persist_env_var OPENCLAW_HOME "$OPENCLAW_HOME"
+
+info "Directory structure ready"
 
 # --- Generate SSH keypair (if not exists) ------------------------------------
 
@@ -299,8 +303,8 @@ fi
 # SSH key must be readable by container user (UID 1001) for the read-only bind mount.
 # Using 640 + group ownership avoids world-readable (644 would break host ssh usage).
 # The entrypoint copies it to ~/.ssh/id_ed25519 with mode 600 inside the container.
-sudo chown "$(id -u):$CONTAINER_UID" "$SSH_KEY"
-chmod 640 "$SSH_KEY"
+sudo chown "$(id -u):1001" "$SSH_KEY" 2>/dev/null || true
+chmod 640 "$SSH_KEY" 2>/dev/null || true
 
 # --- Setup restricted user (requires sudo) -----------------------------------
 
@@ -448,40 +452,8 @@ else
     echo "  cp $SCRIPT_DIR/config/claude-settings.json $WORKSPACE_DIR/.claude/settings.json"
 fi
 
-# --- Sync model ID into openclaw.json ----------------------------------------
-
-# The model ID in openclaw.json must match what Ollama has installed.
-# .env is the source of truth — sync it into openclaw.json using jq.
-OPENCLAW_JSON="$SCRIPT_DIR/openclaw-home/openclaw.json"
-if [[ -f "$OPENCLAW_JSON" ]]; then
-    CURRENT_MODEL=$(jq -r '.models.providers.ollama.models[0].id // empty' "$OPENCLAW_JSON" 2>/dev/null)
-    if [[ "$CURRENT_MODEL" != "$OLLAMA_MODEL" ]]; then
-        # Generate a display name from the model ID (e.g., "qwen3.5:9b" -> "Qwen 3.5 9B")
-        MODEL_NAME=$(echo "$OLLAMA_MODEL" | sed 's/:/ /; s/\b\(.\)/\u\1/g; s/b$/B/')
-        jq --arg id "$OLLAMA_MODEL" --arg name "$MODEL_NAME" --arg primary "ollama/$OLLAMA_MODEL" \
-            '.models.providers.ollama.models[0].id = $id | .models.providers.ollama.models[0].name = $name | .agents.defaults.model.primary = $primary' \
-            "$OPENCLAW_JSON" > "${OPENCLAW_JSON}.tmp" && mv "${OPENCLAW_JSON}.tmp" "$OPENCLAW_JSON"
-        info "Model synced in openclaw.json: $CURRENT_MODEL -> $OLLAMA_MODEL"
-    else
-        info "Model in openclaw.json already matches .env ($OLLAMA_MODEL)"
-    fi
-    # Ensure default model is always set to Ollama (prevents fallback to Anthropic)
-    CURRENT_PRIMARY=$(jq -r '.agents.defaults.model.primary // empty' "$OPENCLAW_JSON" 2>/dev/null)
-    if [[ "$CURRENT_PRIMARY" != "ollama/$OLLAMA_MODEL" ]]; then
-        jq --arg primary "ollama/$OLLAMA_MODEL" \
-            '.agents.defaults.model.primary = $primary' \
-            "$OPENCLAW_JSON" > "${OPENCLAW_JSON}.tmp" && mv "${OPENCLAW_JSON}.tmp" "$OPENCLAW_JSON"
-        info "Default model set to ollama/$OLLAMA_MODEL"
-    fi
-    # Sync Ollama baseUrl (native mode uses host.docker.internal, docker mode uses ollama)
-    CURRENT_BASE_URL=$(jq -r '.models.providers.ollama.baseUrl // empty' "$OPENCLAW_JSON" 2>/dev/null)
-    if [[ "$CURRENT_BASE_URL" != "$OLLAMA_HOST" ]]; then
-        jq --arg url "$OLLAMA_HOST" \
-            '.models.providers.ollama.baseUrl = $url' \
-            "$OPENCLAW_JSON" > "${OPENCLAW_JSON}.tmp" && mv "${OPENCLAW_JSON}.tmp" "$OPENCLAW_JSON"
-        info "Ollama baseUrl synced: $CURRENT_BASE_URL -> $OLLAMA_HOST"
-    fi
-fi
+# NOTE: Model configuration is handled by `openclaw onboard` after the gateway
+# starts (see below). Do NOT manually edit openclaw.json — the gateway owns it.
 
 # --- Build & start Docker stack ----------------------------------------------
 
@@ -500,7 +472,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
     if [[ "$OLLAMA_MODE" == "native" ]]; then
         if ! curl -sf http://localhost:11434/api/tags &>/dev/null; then
             info "Starting Ollama natively..."
-            OLLAMA_HOST= ollama serve &>/dev/null &
+            OLLAMA_HOST= OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_NUM_PARALLEL=1 ollama serve &>/dev/null &
             for i in $(seq 1 30); do
                 curl -sf http://localhost:11434/api/tags &>/dev/null && break
                 sleep 1
@@ -521,10 +493,46 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
 
     cd "$SCRIPT_DIR/docker"
     docker compose $COMPOSE_PROFILES build --build-arg OPENCLAW_VERSION="$OPENCLAW_VERSION"
+
+    # Run openclaw onboard BEFORE starting the gateway.
+    # The gateway needs a valid config to start, and onboard creates it properly.
+    # We use `docker compose run --rm --entrypoint ""` to run onboard as a one-shot
+    # command without triggering the gateway entrypoint.
+    info "Configuring OpenClaw with Ollama ($OLLAMA_MODEL)..."
+    chmod -R 777 "$OPENCLAW_HOME" 2>/dev/null || true
+    if docker compose $COMPOSE_PROFILES run --rm --entrypoint "" \
+        -e OLLAMA_HOST="$OLLAMA_HOST" -e OPENCLAW_HOME= \
+        openclaw \
+        openclaw onboard \
+            --non-interactive \
+            --auth-choice ollama \
+            --custom-base-url "$OLLAMA_HOST" \
+            --custom-model-id "$OLLAMA_MODEL" \
+            --gateway-auth token \
+            --gateway-bind custom \
+            --gateway-port 3000 \
+            --mode local \
+            --accept-risk \
+            --skip-health \
+            2>/dev/null; then
+        info "OpenClaw configured with ollama/$OLLAMA_MODEL"
+    else
+        warn "Onboarding returned non-zero — check with: docker exec zupee-claw openclaw doctor"
+    fi
+
+    # Apply agent defaults (timeout for CPU inference, thinking level)
+    docker compose $COMPOSE_PROFILES run --rm --entrypoint "" \
+        -e OPENCLAW_HOME= \
+        openclaw openclaw config set agents.defaults.timeoutSeconds 300 2>/dev/null || true
+    docker compose $COMPOSE_PROFILES run --rm --entrypoint "" \
+        -e OPENCLAW_HOME= \
+        openclaw openclaw config set agents.defaults.thinkingDefault low 2>/dev/null || true
+
+    # Start the gateway now that config is ready
     docker compose $COMPOSE_PROFILES up -d
     info "Containers started"
 
-    # Wait for gateway to become healthy (generates auth token on first start)
+    # Wait for gateway to become healthy
     echo ""
     info "Waiting for gateway to become healthy..."
     for i in $(seq 1 90); do

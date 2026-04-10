@@ -49,6 +49,7 @@ fi
 
 # Models to benchmark (id:memory_gib)
 CANDIDATE_MODELS=(
+    "qwen3:8b:8"
     "qwen3.5:1.7b:3"
     "qwen3.5:4b:8"
     "qwen3.5:9b:10"

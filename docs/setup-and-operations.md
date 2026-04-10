@@ -269,6 +269,38 @@ Available repos are any directories under `$WORKSPACE_DIR/`.
 
 3. Update `openclaw.json` to reference the new model ID.
 
+## Model Benchmarks
+
+Benchmarks run on **Apple M4 Pro** (14 CPUs, 20 GPU cores, 24 GB RAM) using native Ollama with Metal GPU acceleration. Each prompt was run 3 times and averaged across 4 prompt types (short, medium, coding, reasoning).
+
+### Results (2026-04-10)
+
+| Model | Params | Disk | Avg tok/s | Avg Latency | Cold Start | Quality | Rating |
+|-------|--------|------|-----------|-------------|------------|---------|--------|
+| **qwen3:8b** | 8B | 5.2 GB | **45.5** | **3.96s** | 3.59s (2.40s load) | 3/3 | ★★★ Excellent |
+| qwen3.5:4b | 4B | 3.4 GB | 38.5 | 6.59s | 11.34s (10.07s load) | 3/3 | ★★★ Excellent |
+| qwen3.5:9b | 9B | 6.6 GB | 28.6 | 9.84s | 6.50s (4.53s load) | 3/3 | ★★☆ Good |
+
+### Key Findings
+
+- **qwen3:8b** is the fastest model overall at 45.5 tok/s with the lowest latency (3.96s avg) and fastest cold start (3.59s). Best all-round pick for this hardware.
+- **qwen3.5:4b** offers a good balance — smaller disk footprint (3.4 GB) with solid throughput (38.5 tok/s), though cold start is slower (11.34s).
+- **qwen3.5:9b** has the highest quality responses (longer, more detailed) but is the slowest at 28.6 tok/s. Better suited for machines with more memory/GPU headroom.
+- All three models passed all quality checks (greeting, coding with `def`, reasoning with correct answer of 9).
+
+### Running Benchmarks
+
+```bash
+# Benchmark all candidate models
+./bin/benchmark-models.sh
+
+# Benchmark a specific model
+./bin/benchmark-models.sh qwen3:8b
+
+# Benchmark only installed models
+./bin/benchmark-models.sh --installed
+```
+
 ## Slack Integration
 
 See [slack-integration.md](slack-integration.md) for full Slack setup instructions.

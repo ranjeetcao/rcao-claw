@@ -1,10 +1,4 @@
-# User Profile
-
-## Name
-<Your Name>
-
-## Role
-<Your Role> at <Your Company>
+# User Profile — Developer
 
 ## Preferences
 - Conventional commits: `feat(scope):`, `fix:`, `docs:`, `chore:`
