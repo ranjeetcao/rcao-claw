@@ -1,7 +1,11 @@
 name: zupee-claw
 
 services:
+  # Ollama LLM inference — only used in Docker mode (OLLAMA_MODE=docker).
+  # On macOS, run Ollama natively for Metal GPU acceleration instead.
+  # Activate with: docker compose --profile docker-ollama up -d
   ollama:
+    profiles: ["docker-ollama"]
     image: ollama/ollama:0.20.3
     container_name: zupee-ollama
     volumes:
@@ -33,12 +37,10 @@ services:
     ports:
       - "127.0.0.1:3000:3000"       # Web UI - localhost only, not exposed to network
     volumes:
-      # Claw home directory — must be a single :rw directory mount because the gateway
-      # writes config atomically via temp-file + rename, which is incompatible with
-      # individual bind-mounted files (Docker bind mounts can't be replaced via rename).
-      # Security: the entrypoint enforces read-only on personality files (SOUL.md, etc.)
-      # at the filesystem level, and credentials/ is protected by host-side permissions.
-      - ../openclaw-home:/home/openclaw/.openclaw:rw
+      # OpenClaw home — lives at ~/.openclaw on the host (not in the repo).
+      # setup.sh creates this directory and copies personality files there.
+      # The gateway manages openclaw.json and runtime state in this directory.
+      - ${OPENCLAW_HOME:-~/.openclaw}:/home/openclaw/.openclaw:rw
 
       # Whitelisted scripts (read-only - container can see but not modify)
       - ../bin:/openclaw/bin:ro
@@ -49,7 +51,10 @@ services:
       # Audit logs (read-write)
       - ../logs:/openclaw/logs:rw
     environment:
-      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+      # Clear OPENCLAW_HOME — .env sets it to the HOST path for volume mount interpolation,
+      # but inside the container OpenClaw should use its default (~/.openclaw).
+      - OPENCLAW_HOME=
       - HTTP_PROXY=http://squid:3128
       - HTTPS_PROXY=http://squid:3128
       - NO_PROXY=ollama,localhost,127.0.0.1,host.docker.internal
@@ -61,9 +66,9 @@ services:
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Note: Ollama dependency removed — entrypoint.sh handles readiness check.
+    # This allows running Ollama natively (outside Docker) on macOS for Metal GPU.
     depends_on:
-      ollama:
-        condition: service_healthy
       squid:
         condition: service_healthy
     networks:

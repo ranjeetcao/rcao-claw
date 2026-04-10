@@ -5,26 +5,6 @@
 config/openclaw-docker-key
 config/openclaw-docker-key.pub
 
-# Runtime data
-openclaw-home/agents/
-openclaw-home/credentials/
-openclaw-home/workspace/memory/
-openclaw-home/workspace/MEMORY.md
-openclaw-home/workspace/HEARTBEAT.md
-openclaw-home/workspace/.openclaw/
-
-# Gateway runtime artifacts (auto-generated on first start)
-openclaw-home/canvas/
-openclaw-home/devices/
-openclaw-home/identity/
-openclaw-home/logs/
-openclaw-home/sandboxes/
-openclaw-home/tasks/
-openclaw-home/openclaw.json.bak
-openclaw-home/openclaw.json.bak.*
-openclaw-home/openclaw.json.clobbered.*
-openclaw-home/update-check.json
-
 # Logs
 logs/*.log
 logs/squid/

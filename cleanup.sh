@@ -13,6 +13,19 @@ ENV_FILE="$SCRIPT_DIR/.env"
 OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 REPO=$(grep '^REPO=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 _WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+OLLAMA_MODE=$(grep '^OLLAMA_MODE=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+OLLAMA_MODE="${OLLAMA_MODE:-auto}"
+OPENCLAW_HOME=$(grep '^OPENCLAW_HOME=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
+
+# Resolve "auto" mode
+if [[ "$OLLAMA_MODE" == "auto" ]]; then
+    if [[ "$(uname)" == "Darwin" ]]; then
+        OLLAMA_MODE="native"
+    else
+        OLLAMA_MODE="docker"
+    fi
+fi
 
 # Resolve WORKSPACE_DIR (expand ~ to $HOME), fallback to $HOME/workspace
 if [[ -n "${_WORKSPACE_DIR:-}" ]]; then
@@ -37,13 +50,19 @@ echo -e "${RED}  Zupee Claw - Full Cleanup${NC}"
 echo -e "${RED}========================================${NC}"
 echo ""
 echo "This will remove:"
-echo "  - Docker containers (zupee-claw, zupee-ollama, zupee-squid)"
+if [[ "$OLLAMA_MODE" == "native" ]]; then
+    echo "  - Docker containers (zupee-claw, zupee-squid)"
+    echo "  - Native Ollama process (if running)"
+else
+    echo "  - Docker containers (zupee-claw, zupee-ollama, zupee-squid)"
+fi
 echo "  - Docker images and volumes"
 echo "  - SSH key, authorized_keys, sshd config"
 echo "  - Host user: openclaw-bot"
 echo "  - Claude Code settings from workspace"
+echo "  - OpenClaw home: $OPENCLAW_HOME"
 echo ""
-echo -e "${YELLOW}Agent data (openclaw-home/) and logs will be KEPT unless you choose to delete them.${NC}"
+echo -e "${YELLOW}Agent data (memory, credentials) in ~/.openclaw will be KEPT unless you choose to delete.${NC}"
 echo ""
 read -rp "Proceed with cleanup? [y/N] " confirm
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
@@ -51,12 +70,35 @@ if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
+# --- Stop native Ollama (if applicable) -------------------------------------
+
+if [[ "$OLLAMA_MODE" == "native" ]]; then
+    step "Native Ollama cleanup"
+    if pgrep -f "ollama serve" &>/dev/null; then
+        read -rp "Stop native Ollama process? [y/N] " confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            pkill -f "ollama serve" 2>/dev/null || true
+            info "Ollama stopped"
+        else
+            warn "Kept Ollama running"
+        fi
+    else
+        info "Ollama is not running"
+    fi
+    echo "  Models are stored in ~/.ollama and can be managed with: ollama list / ollama rm <model>"
+fi
+
 # --- Stop & remove Docker containers ----------------------------------------
 
 step "Docker cleanup"
 
-# Always attempt docker compose down — handles both running and stopped containers.
-if docker compose -f "$SCRIPT_DIR/docker/docker-compose.yml" down --rmi local --volumes --remove-orphans 2>&1; then
+# Use profile for docker mode to include ollama container
+COMPOSE_PROFILES=""
+if [[ "$OLLAMA_MODE" == "docker" ]]; then
+    COMPOSE_PROFILES="--profile docker-ollama"
+fi
+
+if docker compose $COMPOSE_PROFILES -f "$SCRIPT_DIR/docker/docker-compose.yml" down --rmi local --volumes --remove-orphans 2>&1; then
     info "Containers, images, and volumes removed"
 else
     warn "Docker compose down had issues (containers may not have been running)"
@@ -110,10 +152,10 @@ if id "$OPENCLAW_USER" &>/dev/null; then
     read -rp "Remove user '$OPENCLAW_USER' and their home directory? [y/N] " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         if [[ "$(uname)" == "Darwin" ]]; then
-            OPENCLAW_HOME=$(dscl . -read /Users/$OPENCLAW_USER NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+            BOT_HOME=$(dscl . -read /Users/$OPENCLAW_USER NFSHomeDirectory 2>/dev/null | awk '{print $2}')
             sudo dscl . -delete /Users/$OPENCLAW_USER
-            if [[ -n "$OPENCLAW_HOME" ]] && [[ -d "$OPENCLAW_HOME" ]]; then
-                sudo rm -rf "$OPENCLAW_HOME"
+            if [[ -n "$BOT_HOME" ]] && [[ -d "$BOT_HOME" ]]; then
+                sudo rm -rf "$BOT_HOME"
             fi
             info "User removed (macOS)"
         else
@@ -150,62 +192,38 @@ else
     info "No Claude settings found at $CLAUDE_SETTINGS"
 fi
 
-# --- Agent data & logs (optional) -------------------------------------------
+# --- OpenClaw home (~/.openclaw) cleanup ------------------------------------
 
-step "Agent data & logs"
+step "OpenClaw home cleanup"
 
-# Reclaim ownership of files created by the container (UID 1001) so we can delete them.
-# Without this, rm fails on container-owned files like devices/paired.json.
-if [[ -d "$SCRIPT_DIR/openclaw-home" ]]; then
-    CONTAINER_OWNED=$(find "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs" -not -user "$(id -u)" 2>/dev/null | head -1)
+if [[ -d "$OPENCLAW_HOME" ]]; then
+    # Reclaim ownership of container-created files
+    CONTAINER_OWNED=$(find "$OPENCLAW_HOME" -not -user "$(id -u)" 2>/dev/null | head -1)
     if [[ -n "$CONTAINER_OWNED" ]]; then
         warn "Some files are owned by the container user (UID 1001). Need sudo to reclaim."
-        if sudo chown -R "$(id -u):$(id -g)" "$SCRIPT_DIR/openclaw-home" "$SCRIPT_DIR/logs"; then
-            info "Reclaimed file ownership"
-        else
-            error "Failed to reclaim file ownership. Run manually:"
-            echo "  sudo chown -R \$(id -u):\$(id -g) $SCRIPT_DIR/openclaw-home $SCRIPT_DIR/logs"
-            echo ""
-            read -rp "Continue cleanup anyway? (some deletes may fail) [y/N] " confirm
-            if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-                echo "Aborted. Fix ownership first, then re-run cleanup."
-                exit 1
-            fi
-        fi
+        sudo chown -R "$(id -u):$(id -g)" "$OPENCLAW_HOME" 2>/dev/null || true
     fi
-fi
 
-# Gateway runtime dirs (devices, sessions, sandboxes, etc.) — always clean these
-for d in agents canvas devices identity sandboxes tasks; do
-    if [[ -d "$SCRIPT_DIR/openclaw-home/$d" ]]; then
-        rm -rf "$SCRIPT_DIR/openclaw-home/$d" 2>/dev/null || \
-            warn "Could not fully remove openclaw-home/$d (permission issue)"
-    fi
-done
-info "Gateway runtime data cleaned (devices, sessions, etc.)"
-
-if [[ -d "$SCRIPT_DIR/openclaw-home/workspace" ]]; then
     echo ""
-    echo "Agent data includes: memory, skills, credentials"
-    echo "Location: $SCRIPT_DIR/openclaw-home/"
-    read -rp "Delete agent data? This is IRREVERSIBLE. [y/N] " confirm
+    echo "  OpenClaw home: $OPENCLAW_HOME"
+    echo "  Contains: personality files, agent sessions, credentials, gateway config"
+    read -rp "Delete OpenClaw home? This is IRREVERSIBLE. [y/N] " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         read -rp "Are you sure? Type 'DELETE' to confirm: " confirm2
         if [[ "$confirm2" == "DELETE" ]]; then
-            rm -rf "$SCRIPT_DIR/openclaw-home/credentials" 2>/dev/null || \
-                warn "Could not fully remove credentials (permission issue)"
-            rm -rf "$SCRIPT_DIR/openclaw-home/skills" 2>/dev/null || \
-                warn "Could not fully remove skills (permission issue)"
-            rm -rf "$SCRIPT_DIR/openclaw-home/workspace/memory" 2>/dev/null || \
-                warn "Could not fully remove workspace/memory (permission issue)"
-            info "Agent data deleted (workspace template files kept)"
+            rm -rf "$OPENCLAW_HOME"
+            info "OpenClaw home deleted: $OPENCLAW_HOME"
         else
-            warn "Kept agent data"
+            warn "Kept OpenClaw home"
         fi
     else
-        warn "Kept agent data"
+        warn "Kept OpenClaw home at $OPENCLAW_HOME"
     fi
+else
+    info "No OpenClaw home found at $OPENCLAW_HOME"
 fi
+
+# --- Logs cleanup -----------------------------------------------------------
 
 if [[ -d "$SCRIPT_DIR/logs" ]] && compgen -G "$SCRIPT_DIR/logs/*.log" &>/dev/null; then
     read -rp "Delete log files? [y/N] " confirm

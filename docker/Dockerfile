@@ -7,7 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Pin Claw version - update deliberately, not automatically
 ARG OPENCLAW_VERSION=2026.4.2
-RUN npm install -g openclaw@${OPENCLAW_VERSION}
+RUN npm install -g openclaw@${OPENCLAW_VERSION} && \
+    # Install optional peer dependencies required by OpenClaw plugins.
+    # These are not bundled with openclaw but imported at runtime.
+    # Install into openclaw's own node_modules so module resolution works.
+    cd /usr/local/lib/node_modules/openclaw && npm install @slack/bolt @slack/web-api @slack/socket-mode grammy
 
 RUN useradd -m -s /bin/bash openclaw && \
     mkdir -p /openclaw/.ssh /openclaw/data /openclaw/logs && \
