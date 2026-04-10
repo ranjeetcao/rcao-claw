@@ -86,10 +86,10 @@ nuclear_cleanup() {
 
     # Stop all containers
     cd "$PROJECT_DIR/docker"
+    # Don't use --rmi (removing images forces slow rebuilds and can fail on network issues)
     OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.4.2}" \
     OLLAMA_HOST="${OLLAMA_HOST:-http://host.docker.internal:11434}" \
     OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}" \
-    # Don't use --rmi (removing images forces slow rebuilds and can fail on network issues)
     docker compose --profile docker-ollama down --volumes --remove-orphans >> "$TEST_LOG" 2>&1 || true
     cd "$PROJECT_DIR"
 
