@@ -7,56 +7,54 @@ ENV_FILE="$SCRIPT_DIR/../.env"
 
 # Parse .env safely (grep+cut, NOT source — prevents code injection via .env)
 if [[ -f "$ENV_FILE" ]]; then
-    REPO=$(grep '^REPO=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+    _WORKSPACE=$(grep '^WORKSPACE=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
     OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-    _WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 else
-    REPO=""
+    _WORKSPACE=""
     OPENCLAW_VERSION=""
-    _WORKSPACE_DIR=""
 fi
 
-# Resolve WORKSPACE_DIR (expand ~ to $HOME), fallback to $HOME/workspace
-if [[ -n "$_WORKSPACE_DIR" ]]; then
-    WORKSPACE_ROOT="${_WORKSPACE_DIR/#\~/$HOME}"
+# Resolve WORKSPACE path (expand ~ to $HOME)
+if [[ -n "$_WORKSPACE" ]]; then
+    WORKDIR="${_WORKSPACE/#\~/$HOME}"
 else
-    WORKSPACE_ROOT="$HOME/workspace"
+    WORKDIR="$HOME/workspace"
 fi
 
-# Allow override via first argument (if caller passes one)
-_REPO_OVERRIDE="${1:-}"
-if [[ -n "$_REPO_OVERRIDE" ]]; then
-    REPO="$_REPO_OVERRIDE"
-fi
-
-# Resolve full path
-if [[ -n "$REPO" ]]; then
+# Allow override via first argument (full path or repo name under parent dir)
+_OVERRIDE="${1:-}"
+if [[ -n "$_OVERRIDE" ]]; then
     # Block path traversal
-    if [[ "$REPO" == *".."* ]] || [[ "$REPO" == /* ]]; then
-        echo "ERROR: Invalid repo name: $REPO"
+    if [[ "$_OVERRIDE" == *".."* ]]; then
+        echo "ERROR: Invalid path: $_OVERRIDE"
         exit 1
     fi
-    # Block shell metacharacters in repo name
-    if [[ "$REPO" =~ [\;\|\&\$\`\\\(\)\{\}\<\>] ]]; then
-        echo "ERROR: Invalid characters in repo name: $REPO"
+    # Block shell metacharacters
+    if [[ "$_OVERRIDE" =~ [\;\|\&\$\`\\\(\)\{\}\<\>] ]]; then
+        echo "ERROR: Invalid characters in path: $_OVERRIDE"
         exit 1
     fi
-    WORKDIR="$WORKSPACE_ROOT/$REPO"
-else
-    WORKDIR="$WORKSPACE_ROOT"
+    # If it's a relative name, resolve under the parent of WORKDIR
+    if [[ "$_OVERRIDE" != /* ]]; then
+        WORKSPACE_PARENT="$(dirname "$WORKDIR")"
+        WORKDIR="$WORKSPACE_PARENT/$_OVERRIDE"
+    else
+        WORKDIR="$_OVERRIDE"
+    fi
 fi
 
 # Verify directory exists
 if [[ ! -d "$WORKDIR" ]]; then
     echo "ERROR: Directory not found: $WORKDIR"
-    echo "Available repos under $WORKSPACE_ROOT:"
-    ls -1 "$WORKSPACE_ROOT" 2>/dev/null || echo "  (none)"
+    WORKSPACE_PARENT="$(dirname "$WORKDIR")"
+    if [[ -d "$WORKSPACE_PARENT" ]]; then
+        echo "Available repos under $WORKSPACE_PARENT:"
+        ls -1 "$WORKSPACE_PARENT" 2>/dev/null || echo "  (none)"
+    fi
     echo ""
-    echo "Set default repo in: $ENV_FILE"
+    echo "Set WORKSPACE in: $ENV_FILE"
     exit 1
 fi
 
 export WORKDIR
-export WORKSPACE_ROOT
-export REPO
 export OPENCLAW_VERSION

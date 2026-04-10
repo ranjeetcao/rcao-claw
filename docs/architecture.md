@@ -271,7 +271,7 @@ All user configuration is managed through `.env`:
 | `OPENCLAW_VERSION` | `2026.4.2` | Pinned Claw gateway version |
 | `REPO` | `my-project` | Default repository name under `$WORKSPACE_DIR/` |
 | `WORKSPACE_DIR` | `~/workspace` | Root directory where dev repos live |
-| `OLLAMA_MODEL` | `qwen3:1.7b` | Ollama model for local inference |
+| `OLLAMA_MODEL` | `gemma4:e2b` | Ollama model for local inference |
 | `SLACK_BOT_TOKEN` | (unset) | Bot User OAuth Token for Slack (`xoxb-...`) |
 | `SLACK_APP_TOKEN` | (unset) | App-Level Token for Socket Mode (`xapp-...`) |
 

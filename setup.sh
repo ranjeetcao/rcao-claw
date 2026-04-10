@@ -74,8 +74,7 @@ fi
 # Parse .env safely (no source — prevents code injection)
 # || true: grep exits 1 if key is missing — don't abort under set -euo pipefail
 OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-REPO=$(grep '^REPO=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-_WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+_WORKSPACE=$(grep '^WORKSPACE=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 OLLAMA_MODEL=$(grep '^OLLAMA_MODEL=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 OLLAMA_MODEL_MEM=$(grep '^OLLAMA_MODEL_MEM=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 OLLAMA_MODE=$(grep '^OLLAMA_MODE=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
@@ -90,17 +89,17 @@ if [[ "$OLLAMA_MODE" == "auto" ]]; then
     fi
 fi
 
-# Resolve WORKSPACE_DIR (expand ~ to $HOME), fallback to $HOME/workspace
-if [[ -n "${_WORKSPACE_DIR:-}" ]]; then
-    WORKSPACE_BASE="${_WORKSPACE_DIR/#\~/$HOME}"
+# Resolve WORKSPACE path (expand ~ to $HOME)
+if [[ -n "${_WORKSPACE:-}" ]]; then
+    WORKSPACE="${_WORKSPACE/#\~/$HOME}"
 else
-    WORKSPACE_BASE="$HOME/workspace"
+    WORKSPACE="$HOME/workspace/my-project"
 fi
 
 # Fallback for OLLAMA_MODEL
-OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3:1.7b}"
-# Fallback for model memory (GiB) — 3 GiB is safe for small models
-OLLAMA_MODEL_MEM="${OLLAMA_MODEL_MEM:-3}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-gemma4:e2b}"
+# Fallback for model memory (GiB) — 10 GiB for gemma4:e2b default
+OLLAMA_MODEL_MEM="${OLLAMA_MODEL_MEM:-10}"
 
 # --- Pre-flight checks -------------------------------------------------------
 
@@ -480,13 +479,8 @@ fi
 
 step "Claude Code workspace setup"
 
-WORKSPACE_DIR="$WORKSPACE_BASE"
-if [[ -n "$REPO" ]]; then
-    WORKSPACE_DIR="$WORKSPACE_DIR/$REPO"
-fi
-
-if [[ -d "$WORKSPACE_DIR" ]]; then
-    CLAUDE_DIR="$WORKSPACE_DIR/.claude"
+if [[ -d "$WORKSPACE" ]]; then
+    CLAUDE_DIR="$WORKSPACE/.claude"
     mkdir -p "$CLAUDE_DIR"
     if [[ -f "$CLAUDE_DIR/settings.json" ]]; then
         warn "Claude settings already exist at $CLAUDE_DIR/settings.json (skipping)"
@@ -495,9 +489,9 @@ if [[ -d "$WORKSPACE_DIR" ]]; then
         info "Claude Code lockdown settings installed at $CLAUDE_DIR/settings.json"
     fi
 else
-    warn "Workspace $WORKSPACE_DIR does not exist yet. Claude settings will need to be copied manually:"
-    echo "  mkdir -p $WORKSPACE_DIR/.claude"
-    echo "  cp $SCRIPT_DIR/config/claude-settings.json $WORKSPACE_DIR/.claude/settings.json"
+    warn "Workspace $WORKSPACE does not exist yet. Claude settings will need to be copied manually:"
+    echo "  mkdir -p $WORKSPACE/.claude"
+    echo "  cp $SCRIPT_DIR/config/claude-settings.json $WORKSPACE/.claude/settings.json"
 fi
 
 # NOTE: Model configuration is handled by `openclaw onboard` after the gateway
@@ -508,13 +502,12 @@ fi
 step "Docker build & start"
 
 echo "Claw version: $OPENCLAW_VERSION"
-echo "Default repo: ${REPO:-'(not set)'}"
+echo "Workspace:    $WORKSPACE"
 echo ""
 confirm=$(ask "Build and start Docker containers? [y/N] ")
 if [[ "$confirm" =~ ^[Yy]$ ]]; then
     # Export vars for docker-compose interpolation
     export OPENCLAW_VERSION
-    export REPO
 
     # In native mode, ensure Ollama is running on the host before starting containers
     if [[ "$OLLAMA_MODE" == "native" ]]; then
@@ -796,7 +789,7 @@ step "Setup Complete"
 echo ""
 echo "  Config:      $SCRIPT_DIR/.env"
 echo "  Version:     Claw $OPENCLAW_VERSION"
-echo "  Repo:        ${REPO:-'(not set)'}"
+echo "  Workspace:   $WORKSPACE"
 echo "  Agent files: $SCRIPT_DIR/openclaw-home/workspace/"
 echo "  Logs:        $SCRIPT_DIR/logs/"
 echo ""

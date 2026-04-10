@@ -46,7 +46,7 @@ cp .env.example .env
 | `OPENCLAW_VERSION` | `2026.4.2` | Yes | Pinned Claw gateway version |
 | `REPO` | `my-project` | Yes | Default repo directory under workspace |
 | `WORKSPACE_DIR` | `~/workspace` | Yes | Base directory where dev repos live |
-| `OLLAMA_MODEL` | `qwen3:1.7b` | Yes | LLM model for local inference |
+| `OLLAMA_MODEL` | `gemma4:e2b` | Yes | LLM model for local inference |
 | `SLACK_BOT_TOKEN` | (empty) | No | Slack bot OAuth token (`xoxb-...`) |
 | `SLACK_APP_TOKEN` | (empty) | No | Slack app-level token (`xapp-...`) |
 
@@ -273,11 +273,12 @@ Available repos are any directories under `$WORKSPACE_DIR/`.
 
 Benchmarks run on **Apple M4 Pro** (14 CPUs, 20 GPU cores, 24 GB RAM) using native Ollama with Metal GPU acceleration. Each prompt was run 3 times and averaged across 4 prompt types (short, medium, coding, reasoning).
 
-### Results (2026-04-10)
+### Results (updated 2026-04-10)
 
 | Model | Params | Disk | Avg tok/s | Avg Latency | Cold Start | Quality | Rating |
 |-------|--------|------|-----------|-------------|------------|---------|--------|
-| **qwen3:8b** | 8B | 5.2 GB | **45.5** | **3.96s** | 3.59s (2.40s load) | 3/3 | ★★★ Excellent |
+| **gemma4:e2b** | 12B | 7.2 GB | **105.1** | 10.50s | 4.35s (3.11s load) | 3/3 | ★★★ Excellent |
+| qwen3:8b | 8B | 5.2 GB | 45.5 | **3.96s** | 3.59s (2.40s load) | 3/3 | ★★★ Excellent |
 | qwen3.5:4b | 4B | 3.4 GB | 38.5 | 6.59s | 11.34s (10.07s load) | 3/3 | ★★★ Excellent |
 | qwen3.5:9b | 9B | 6.6 GB | 28.6 | 9.84s | 6.50s (4.53s load) | 3/3 | ★★☆ Good |
 
@@ -287,9 +288,10 @@ Beyond speed, we test models on 6 real-world capability categories that reflect 
 
 | Model | Planning | Code Gen | Bug Detection | Instructions | Communication | Reasoning | Total |
 |-------|----------|----------|---------------|--------------|---------------|-----------|-------|
+| **gemma4:e2b** | **7/7** | **14/14** | **9/9** | **9/9** | **10/10** | **9/9** | **58/58 (100%)** |
 | qwen3:8b | 6/7 | 14/14 | 9/9 | 9/9 | 10/10 | 9/9 | **57/58 (98%)** |
-| **qwen3.5:4b** | **7/7** | **14/14** | **9/9** | **9/9** | **10/10** | **9/9** | **58/58 (100%)** |
-| **qwen3.5:9b** | **7/7** | **14/14** | **9/9** | **9/9** | **10/10** | **9/9** | **58/58 (100%)** |
+| qwen3.5:4b | **7/7** | **14/14** | **9/9** | **9/9** | **10/10** | **9/9** | **58/58 (100%)** |
+| qwen3.5:9b | **7/7** | **14/14** | **9/9** | **9/9** | **10/10** | **9/9** | **58/58 (100%)** |
 
 **Test categories explained:**
 
@@ -304,18 +306,20 @@ Beyond speed, we test models on 6 real-world capability categories that reflect 
 
 ### Key Findings
 
-- **qwen3:8b** is the fastest model at 45.5 tok/s with lowest latency (3.96s), scoring 98% quality. Best pick when speed matters — the 1-point miss was in task decomposition (didn't list all endpoints explicitly).
+- **gemma4:e2b** dominates throughput at 105.1 tok/s — over 2x faster than qwen3:8b — with perfect 100% quality across all 58 tests. Higher latency (10.50s avg) is driven by longer coding responses, not slower generation. Fast cold start (4.35s). The new top pick for 24GB+ machines.
+- **qwen3:8b** has the lowest latency at 3.96s with 98% quality. Best pick when response time matters more than throughput — the 1-point miss was in task decomposition (didn't list all endpoints explicitly).
 - **qwen3.5:4b** hits the sweet spot for 16GB RAM laptops — perfect 100% quality, smallest disk (3.4 GB), solid 38.5 tok/s. Recommended default for resource-constrained machines.
-- **qwen3.5:9b** also scores 100% quality but is notably slower at 28.6 tok/s. The extra parameters don't add measurable quality on these tests but cost 40% more latency. Better suited for 32GB+ machines.
-- All three models are **Strong** rated — reliable as daily drivers for developer and QA workflows.
+- **qwen3.5:9b** also scores 100% quality but is notably slower at 28.6 tok/s. The extra parameters don't add measurable quality on these tests but cost 40% more latency.
+- All four models are **Strong** or **Excellent** rated — reliable as daily drivers for developer and QA workflows.
 
 ### Recommendation by Hardware
 
 | RAM | Recommended Model | Rationale |
 |-----|-------------------|-----------|
 | 16 GB | **qwen3.5:4b** | 100% quality, 3.4 GB disk, leaves room for IDE + Docker |
-| 18-24 GB | **qwen3:8b** | 98% quality, fastest throughput (45.5 tok/s) |
-| 32 GB+ | **qwen3.5:9b** | 100% quality, best for complex reasoning tasks at scale |
+| 18-24 GB | **gemma4:e2b** | 100% quality, 105.1 tok/s, best throughput with Metal GPU |
+| 24 GB+ | **gemma4:e2b** | 100% quality, 2x faster than alternatives, 7.2 GB disk |
+| 32 GB+ | **qwen3.5:9b** | 100% quality, good for complex reasoning tasks at scale |
 
 ### Running Benchmarks
 
