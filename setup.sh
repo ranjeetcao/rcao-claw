@@ -58,7 +58,7 @@ else
 fi
 
 # Fallback for OLLAMA_MODEL
-OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.5}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3:1.7b}"
 # Fallback for model memory (GiB) — 3 GiB is safe for small models
 OLLAMA_MODEL_MEM="${OLLAMA_MODEL_MEM:-3}"
 
@@ -227,8 +227,10 @@ step "Creating directories"
 # Create log directories
 mkdir -p "$SCRIPT_DIR/logs"
 mkdir -p "$SCRIPT_DIR/logs/squid"
-chmod 777 "$SCRIPT_DIR/logs/squid"
-chmod 777 "$SCRIPT_DIR/logs"
+# Squid runs as UID 13 (proxy), container runs as UID 1001 — both need write access.
+# Using 775 with current user ownership; Docker handles UID mapping for writes.
+chmod 775 "$SCRIPT_DIR/logs/squid"
+chmod 775 "$SCRIPT_DIR/logs"
 
 # Create OpenClaw home at ~/.openclaw (outside the repo)
 mkdir -p "$OPENCLAW_HOME/workspace"
@@ -499,7 +501,9 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
     # We use `docker compose run --rm --entrypoint ""` to run onboard as a one-shot
     # command without triggering the gateway entrypoint.
     info "Configuring OpenClaw with Ollama ($OLLAMA_MODEL)..."
-    chmod -R 777 "$OPENCLAW_HOME" 2>/dev/null || true
+    # Temporarily widen permissions for onboard (container UID 1001 needs write access).
+    # Tightened back to 775 after onboard completes.
+    chmod -R 775 "$OPENCLAW_HOME" 2>/dev/null || true
     if docker compose $COMPOSE_PROFILES run --rm --entrypoint "" \
         -e OLLAMA_HOST="$OLLAMA_HOST" -e OPENCLAW_HOME= \
         openclaw \
@@ -527,6 +531,10 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
     docker compose $COMPOSE_PROFILES run --rm --entrypoint "" \
         -e OPENCLAW_HOME= \
         openclaw openclaw config set agents.defaults.thinkingDefault low 2>/dev/null || true
+
+    # Tighten permissions after onboard — only owner + group (container UID 1001) need access
+    chmod -R 755 "$OPENCLAW_HOME" 2>/dev/null || true
+    chmod 600 "$OPENCLAW_HOME/openclaw.json" 2>/dev/null || true
 
     # Start the gateway now that config is ready
     docker compose $COMPOSE_PROFILES up -d

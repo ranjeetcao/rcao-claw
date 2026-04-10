@@ -575,7 +575,23 @@ main() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --all)       run_all=true; shift ;;
-            --category)  target_category="$2"; shift 2 ;;
+            --category)
+                if [[ $# -lt 2 ]]; then
+                    error "--category requires a value"
+                    echo "  Valid categories: planning, code_gen, bugs, instruct, comms, reasoning"
+                    exit 1
+                fi
+                target_category="$2"
+                case "$target_category" in
+                    planning|code_gen|bugs|instruct|comms|reasoning) ;;
+                    *)
+                        error "Unknown category: $target_category"
+                        echo "  Valid categories: planning, code_gen, bugs, instruct, comms, reasoning"
+                        exit 1
+                        ;;
+                esac
+                shift 2
+                ;;
             --help|-h)
                 echo "Usage: $0 [model] [--all] [--category <name>]"
                 echo ""
@@ -609,10 +625,20 @@ main() {
     for model in "${models[@]}"; do
         header "Quality Tests: $model"
 
-        # Check model is available
-        if ! ollama list 2>/dev/null | awk '{print $1}' | grep -q "^${model}$"; then
+        # Check model is available (mode-aware)
+        local model_list
+        if [[ "$OLLAMA_MODE" == "native" ]]; then
+            model_list=$(OLLAMA_HOST= ollama list 2>/dev/null || true)
+        else
+            model_list=$(docker exec "$OLLAMA_CONTAINER" ollama list 2>/dev/null || true)
+        fi
+        if ! echo "$model_list" | grep -q "^${model}"; then
             warn "Model $model not installed. Skipping."
-            echo "  Pull with: ollama pull $model"
+            if [[ "$OLLAMA_MODE" == "native" ]]; then
+                echo "  Pull with: ollama pull $model"
+            else
+                echo "  Pull with: docker exec $OLLAMA_CONTAINER ollama pull $model"
+            fi
             continue
         fi
 
