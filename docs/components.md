@@ -226,7 +226,7 @@ service-status
     "providers": {
       "ollama": {
         "baseUrl": "http://ollama:11434",
-        "models": [{ "id": "qwen3.5", "name": "Qwen 3.5", "api": "ollama" }]
+        "models": [{ "id": "gemma4:e2b", "name": "Gemma 4 E2B", "api": "ollama" }]
       }
     }
   },

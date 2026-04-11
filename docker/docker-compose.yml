@@ -64,8 +64,11 @@ services:
       # yamllint disable-line rule:line-length
       - no_proxy=ollama,localhost,127.0.0.1,host.docker.internal
       # For production, consider using Docker secrets instead of env vars
-      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      # Slack: user token mode (messages appear from the developer, not a bot)
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+      - SLACK_USER_TOKEN=${SLACK_USER_TOKEN:-}
+      # Legacy bot token (only if using bot mode instead of user token)
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # Note: Ollama dependency removed — entrypoint.sh handles readiness check.
@@ -110,7 +113,7 @@ services:
           cpus: "0.5"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo -e 'HEAD / HTTP/1.0\\r\\n\\r\\n' > /dev/tcp/127.0.0.1/3128"]
+      test: ["CMD", "bash", "-c", ": </dev/tcp/127.0.0.1/3128"]
       interval: 30s
       timeout: 5s
       retries: 3

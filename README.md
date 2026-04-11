@@ -74,7 +74,7 @@ All settings live in `.env` (copied from `.env.example`):
 | `OPENCLAW_VERSION` | `2026.4.2` | Pinned Claw version |
 | `REPO` | `my-project` | Default repo name under workspace dir |
 | `WORKSPACE_DIR` | `~/workspace` | Root directory where your repos live |
-| `OLLAMA_MODEL` | `qwen3.5` | Ollama model for local inference |
+| `OLLAMA_MODEL` | `gemma4:e2b` | Ollama model for local inference |
 
 ## Daily Usage
 
@@ -137,7 +137,7 @@ cat bin/allowed-commands.conf
 **Ollama model not responding:**
 ```bash
 # Pull the model manually
-docker compose -f docker/docker-compose.yml exec ollama ollama pull qwen3.5
+docker compose -f docker/docker-compose.yml exec ollama ollama pull gemma4:e2b
 # Check Ollama status
 docker compose -f docker/docker-compose.yml exec ollama ollama list
 ```

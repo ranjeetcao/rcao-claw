@@ -48,6 +48,7 @@ CLAW_CONTAINER="zupee-claw"
 REQUEST_TIMEOUT=120
 
 CANDIDATE_MODELS=(
+    "gemma4:e2b"
     "qwen3:8b"
     "qwen3.5:4b"
     "qwen3.5:9b"
@@ -614,7 +615,7 @@ main() {
         # Default: read from .env
         local env_model
         env_model=$(grep '^OLLAMA_MODEL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-        env_model="${env_model:-qwen3:8b}"
+        env_model="${env_model:-gemma4:e2b}"
         models=("$env_model")
     fi
 

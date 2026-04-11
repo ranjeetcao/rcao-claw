@@ -49,8 +49,7 @@ confirm_sudo() {
 # Parse .env safely (no source — prevents code injection)
 ENV_FILE="$SCRIPT_DIR/.env"
 OPENCLAW_VERSION=$(grep '^OPENCLAW_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-REPO=$(grep '^REPO=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-_WORKSPACE_DIR=$(grep '^WORKSPACE_DIR=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+_WORKSPACE=$(grep '^WORKSPACE=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 OLLAMA_MODE=$(grep '^OLLAMA_MODE=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 OLLAMA_MODE="${OLLAMA_MODE:-auto}"
 OPENCLAW_HOME=$(grep '^OPENCLAW_HOME=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
@@ -65,11 +64,11 @@ if [[ "$OLLAMA_MODE" == "auto" ]]; then
     fi
 fi
 
-# Resolve WORKSPACE_DIR (expand ~ to $HOME), fallback to $HOME/workspace
-if [[ -n "${_WORKSPACE_DIR:-}" ]]; then
-    WORKSPACE_BASE="${_WORKSPACE_DIR/#\~/$HOME}"
+# Resolve WORKSPACE path (expand ~ to $HOME)
+if [[ -n "${_WORKSPACE:-}" ]]; then
+    WORKSPACE="${_WORKSPACE/#\~/$HOME}"
 else
-    WORKSPACE_BASE="$HOME/workspace"
+    WORKSPACE="$HOME/workspace"
 fi
 
 GREEN='\033[0;32m'
@@ -211,17 +210,12 @@ fi
 
 step "Claude Code workspace cleanup"
 
-WORKSPACE_DIR="$WORKSPACE_BASE"
-if [[ -n "$REPO" ]]; then
-    WORKSPACE_DIR="$WORKSPACE_DIR/$REPO"
-fi
-
-CLAUDE_SETTINGS="$WORKSPACE_DIR/.claude/settings.json"
+CLAUDE_SETTINGS="$WORKSPACE/.claude/settings.json"
 if [[ -f "$CLAUDE_SETTINGS" ]]; then
-    confirm=$(confirm_prompt "Remove Claude Code settings from $WORKSPACE_DIR/.claude/? [y/N] ")
+    confirm=$(confirm_prompt "Remove Claude Code settings from $WORKSPACE/.claude/? [y/N] ")
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         rm -f "$CLAUDE_SETTINGS"
-        rmdir "$WORKSPACE_DIR/.claude" 2>/dev/null || true
+        rmdir "$WORKSPACE/.claude" 2>/dev/null || true
         info "Claude settings removed"
     else
         warn "Kept Claude settings"
