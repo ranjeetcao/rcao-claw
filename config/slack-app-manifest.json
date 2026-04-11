@@ -1,12 +1,12 @@
 {
   "display_information": {
-    "name": "YourName's Claw",
-    "description": "AI development partner — change name before creating",
+    "name": "YourName's ClawBot",
+    "description": "AI development partner — change YourName before creating",
     "background_color": "#1a1a2e"
   },
   "features": {
     "bot_user": {
-      "display_name": "ZClaw",
+      "display_name": "YourName's ClawBot",
       "always_online": false
     },
     "app_home": {
