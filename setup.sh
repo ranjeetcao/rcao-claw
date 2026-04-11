@@ -407,6 +407,18 @@ if [[ "$(uname)" == "Darwin" ]]; then
         chmod 640 "$HOME/.claude/.credentials-cache"
         info "Claude Code credentials refreshed from Keychain"
     fi
+
+    # Install LaunchAgent to auto-refresh the token every 30 minutes.
+    # SSH sessions can't access Keychain, so this GUI-context agent keeps the cache fresh.
+    PLIST_SRC="$SCRIPT_DIR/config/com.zupee.claw.token-refresh.plist"
+    PLIST_DST="$HOME/Library/LaunchAgents/com.zupee.claw.token-refresh.plist"
+    if [[ -f "$PLIST_SRC" ]]; then
+        mkdir -p "$HOME/Library/LaunchAgents"
+        cp "$PLIST_SRC" "$PLIST_DST"
+        launchctl unload "$PLIST_DST" 2>/dev/null || true
+        launchctl load "$PLIST_DST" 2>/dev/null || true
+        info "Token refresh LaunchAgent installed (every 30 min)"
+    fi
 fi
 
 # --- Ensure Remote Login is enabled (macOS) -----------------------------------

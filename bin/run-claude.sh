@@ -48,24 +48,116 @@ echo "[$(date -Iseconds)] CLAUDE START: dir=$WORKDIR prompt=${PROMPT:0:100}..." 
 # Claude Code uses macOS Keychain for OAuth, which isn't available in SSH sessions.
 # Use apiKeyHelper to read the token from .credentials-cache instead.
 # setup.sh creates this helper and refreshes the cache from Keychain at setup time.
+# Build a combined settings file: auth helper + permission overrides.
+# This overrides the target repo's .claude/settings.json so our lockdown
+# rules apply and file creation (Write, mkdir) is allowed for docs/.
 AUTH_HELPER="$HOME/openclaw/claude-auth-helper.sh"
-AUTH_SETTINGS_FILE="$HOME/openclaw/claude-settings-auth.json"
-AUTH_SETTINGS=""
+CLAW_SETTINGS_FILE="$HOME/openclaw/claude-run-settings.json"
+CLAW_SETTINGS=""
+
+_AUTH_LINE=""
 if [[ -f "$AUTH_HELPER" ]]; then
-    # Create settings file with apiKeyHelper path (--settings expects a file, not inline JSON)
-    echo "{\"apiKeyHelper\": \"$AUTH_HELPER\"}" > "$AUTH_SETTINGS_FILE"
-    AUTH_SETTINGS="--settings $AUTH_SETTINGS_FILE"
+    _AUTH_LINE="\"apiKeyHelper\": \"$AUTH_HELPER\","
 fi
+
+cat > "$CLAW_SETTINGS_FILE" << SETTINGS_EOF
+{
+  $_AUTH_LINE
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash(npm test *)",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(npm ci)",
+      "Bash(pnpm *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git status)",
+      "Bash(git show *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git stash *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr view *)",
+      "Bash(node src/*)",
+      "Bash(node scripts/*)",
+      "Bash(node dist/*)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(rm *.ts)",
+      "Bash(rm *.js)",
+      "Bash(rm *.json)",
+      "Bash(rm *.md)",
+      "Bash(rm *.css)",
+      "Bash(rm *.html)",
+      "Bash(wc *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(sort *)",
+      "Bash(which *)"
+    ],
+    "deny": [
+      "Bash(node -e *)",
+      "Bash(npx *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(rm -rf *)",
+      "Bash(rm -r *)",
+      "Bash(ssh *)",
+      "Bash(sudo *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(bash -c *)",
+      "Bash(sh -c *)",
+      "Bash(docker *)",
+      "Bash(git push origin main)",
+      "Bash(git push -f *)",
+      "Bash(git rebase *)",
+      "Bash(git reset *)",
+      "Bash(git merge *)",
+      "Bash(git config *)",
+      "WebFetch",
+      "WebSearch"
+    ]
+  }
+}
+SETTINGS_EOF
+CLAW_SETTINGS="--settings $CLAW_SETTINGS_FILE"
 
 cd "$WORKDIR"
 
+# System prompt establishes Claw's identity and the backlog workflow.
+# This is prepended to the repo's own CLAUDE.md context.
+SCRIPT_BASE="$(dirname "${BASH_SOURCE[0]}")/.."
+PERSONALITY_DIR="$SCRIPT_BASE/personality"
+SYSTEM_PROMPT=""
+if [[ -d "$PERSONALITY_DIR" ]]; then
+    # Find the role from the installed personality (check which SOUL.md exists)
+    for _role_dir in "$PERSONALITY_DIR"/*/; do
+        _role=$(basename "$_role_dir")
+        [[ "$_role" == "shared" ]] && continue
+        if [[ -f "$_role_dir/SOUL.md" ]]; then
+            SYSTEM_PROMPT="$(cat "$PERSONALITY_DIR/shared/IDENTITY.md" "$_role_dir/SOUL.md" "$_role_dir/AGENTS.md" 2>/dev/null)"
+            break
+        fi
+    done
+fi
+
 # shellcheck disable=SC2086
 "$CLAUDE_BIN" -p "$PROMPT" \
-  $AUTH_SETTINGS \
+  $CLAW_SETTINGS \
+  ${SYSTEM_PROMPT:+--append-system-prompt "$SYSTEM_PROMPT"} \
   --permission-mode dontAsk \
-  --allowedTools '"Read" "Edit" "Write" "Glob" "Grep" "Bash(npm test *)" "Bash(npm run *)" "Bash(npm install *)" "Bash(npm ci)" "Bash(git diff *)" "Bash(git log *)" "Bash(git status)" "Bash(git show *)" "Bash(git add *)" "Bash(git commit *)" "Bash(git branch *)" "Bash(git checkout *)" "Bash(git stash *)" "Bash(git remote *)" "Bash(node src/*)" "Bash(node scripts/*)" "Bash(node dist/*)" "Bash(ls *)" "Bash(mkdir *)" "Bash(rm *.ts)" "Bash(rm *.js)" "Bash(rm *.json)" "Bash(rm *.md)" "Bash(rm *.css)" "Bash(rm *.html)" "Bash(wc *)" "Bash(head *)" "Bash(tail *)" "Bash(sort *)" "Bash(which *)"' \
-  --disallowedTools '"Bash(node -e *)" "Bash(node --eval *)" "Bash(node -p *)" "Bash(node --print *)" "Bash(npx *)" "Bash(curl *)" "Bash(wget *)" "Bash(rm -rf *)" "Bash(rm -r *)" "Bash(ssh *)" "Bash(sudo *)" "Bash(su *)" "Bash(chmod *)" "Bash(chown *)" "Bash(kill *)" "Bash(pkill *)" "Bash(dd *)" "Bash(nc *)" "Bash(ncat *)" "Bash(python *)" "Bash(python3 *)" "Bash(ruby *)" "Bash(perl *)" "Bash(awk *)" "Bash(sed *)" "Bash(tee *)" "Bash(xargs *)" "Bash(find *)" "Bash(pip *)" "Bash(pip3 *)" "Bash(ln *)" "Bash(eval *)" "Bash(exec *)" "Bash(nohup *)" "Bash(crontab *)" "Bash(docker *)" "Bash(mount *)" "Bash(umount *)" "Bash(open *)" "Bash(xdg-open *)" "Bash(pbcopy *)" "Bash(osascript *)" "Bash(env *)" "Bash(export *)" "Bash(source *)" "Bash(bash -c *)" "Bash(sh -c *)" "Bash(git push *)" "Bash(git rebase *)" "Bash(git reset *)" "Bash(git merge *)" "Bash(git config *)" "WebFetch" "WebSearch"' \
-  --max-turns 25 \
+  --max-turns 50 \
   --max-budget-usd 10.00 \
   2>&1 | tee -a "$LOGFILE"
 
