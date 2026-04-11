@@ -19,34 +19,58 @@ log() {
 mkdir -p "$(dirname "$LOGFILE")"
 
 # Rate limiting: max 30 commands per minute
-# Rate file in $HOME (not world-writable /tmp), with flock for atomic access
+# Uses mkdir-based locking (portable, works on macOS and Linux without flock)
 RATE_DIR="$HOME/openclaw"
 mkdir -p "$RATE_DIR"
 RATE_MAIN="$RATE_DIR/.rate-limit"
 RATE_TMP="$RATE_DIR/.rate-limit.tmp.$$"
+RATE_LOCK="$RATE_DIR/.rate-limit.lock"
 RATE_WINDOW=60
 RATE_LIMIT=30
 _now=$(date +%s)
-(
-    flock -n 9 || { echo "ERROR: Rate limiter busy"; exit 1; }
+
+# Acquire lock (mkdir is atomic on all platforms)
+_lock_acquired=false
+for _i in 1 2 3; do
+    if mkdir "$RATE_LOCK" 2>/dev/null; then
+        _lock_acquired=true
+        break
+    fi
+    # Remove stale lock (older than 5 seconds)
+    if [[ -d "$RATE_LOCK" ]]; then
+        _lock_age=$(( _now - $(stat -f %m "$RATE_LOCK" 2>/dev/null || stat -c %Y "$RATE_LOCK" 2>/dev/null || echo "$_now") ))
+        if [[ $_lock_age -gt 5 ]]; then
+            rmdir "$RATE_LOCK" 2>/dev/null || true
+        fi
+    fi
+done
+
+if [[ "$_lock_acquired" == "true" ]]; then
+    # Clean entries older than RATE_WINDOW
     if [[ -f "$RATE_MAIN" ]]; then
-        # Clean entries older than RATE_WINDOW
         awk -v cutoff=$((_now - RATE_WINDOW)) '$1 > cutoff' "$RATE_MAIN" > "$RATE_TMP" 2>/dev/null || true
         mv "$RATE_TMP" "$RATE_MAIN" 2>/dev/null || true
         _count=$(wc -l < "$RATE_MAIN" 2>/dev/null || echo "0")
+        _count=$(echo "$_count" | tr -d ' ')
         if [[ $_count -ge $RATE_LIMIT ]]; then
+            rmdir "$RATE_LOCK" 2>/dev/null || true
             log "DENIED: rate limit exceeded ($_count commands in ${RATE_WINDOW}s)"
             echo "ERROR: Rate limit exceeded. Try again later."
             exit 1
         fi
     fi
     echo "$_now" >> "$RATE_MAIN"
-) 9>"$RATE_DIR/.rate-limit.lock"
+    rmdir "$RATE_LOCK" 2>/dev/null || true
+else
+    log "DENIED: rate limiter busy"
+    echo "ERROR: Rate limiter busy. Try again."
+    exit 1
+fi
 
 # SSH_ORIGINAL_COMMAND is set by sshd when ForceCommand is active
 if [[ -z "${SSH_ORIGINAL_COMMAND:-}" ]]; then
     log "DENIED: empty command (interactive shell attempt)"
-    echo "ERROR: Interactive shell not permitted. Use: ssh openclaw-bot@host <command> [args...]"
+    echo "ERROR: Interactive shell not permitted. Use: ssh <user>@host <command> [args...]"
     exit 1
 fi
 
