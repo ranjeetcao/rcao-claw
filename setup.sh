@@ -80,7 +80,7 @@ OLLAMA_MODEL_MEM=$(grep '^OLLAMA_MODEL_MEM=' "$ENV_FILE" | cut -d= -f2- | tr -d 
 OLLAMA_MODE=$(grep '^OLLAMA_MODE=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 OLLAMA_MODE="${OLLAMA_MODE:-auto}"
 SLACK_APP_TOKEN=$(grep '^SLACK_APP_TOKEN=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-SLACK_USER_TOKEN=$(grep '^SLACK_USER_TOKEN=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+SLACK_BOT_TOKEN=$(grep '^SLACK_BOT_TOKEN=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 
 # Resolve "auto" mode: native on macOS (Metal GPU), docker on Linux
 if [[ "$OLLAMA_MODE" == "auto" ]]; then
@@ -543,41 +543,34 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
         -e OPENCLAW_HOME= \
         openclaw openclaw config set agents.defaults.thinkingDefault low 2>/dev/null || true
 
-    # Configure Slack with user token (messages appear from the developer, not a bot)
-    if [[ -n "$SLACK_APP_TOKEN" ]] && [[ -n "$SLACK_USER_TOKEN" ]]; then
-        info "Configuring Slack (user token mode — messages appear as you)..."
+    # Configure Slack with developer's personal bot
+    # Each developer has their own Slack app (e.g., "Ranjeet's Claw")
+    if [[ -n "$SLACK_APP_TOKEN" ]] && [[ -n "$SLACK_BOT_TOKEN" ]]; then
+        info "Configuring Slack..."
         docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
             -e OPENCLAW_HOME= \
-            openclaw openclaw config set channels.slack.enabled true 2>/dev/null || true
-        docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
-            -e OPENCLAW_HOME= \
-            openclaw openclaw config set channels.slack.mode socket 2>/dev/null || true
-        docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
-            -e OPENCLAW_HOME= \
-            openclaw openclaw config set channels.slack.appToken "$SLACK_APP_TOKEN" 2>/dev/null || true
-        docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
-            -e OPENCLAW_HOME= \
-            openclaw openclaw config set channels.slack.userToken "$SLACK_USER_TOKEN" 2>/dev/null || true
-        # Allow Claw to write messages as the developer (not read-only)
-        docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
-            -e OPENCLAW_HOME= \
-            openclaw openclaw config set channels.slack.userTokenReadOnly false 2>/dev/null || true
-        # Respond in channels without requiring @mention
+            openclaw openclaw channels add \
+                --channel slack \
+                --app-token "$SLACK_APP_TOKEN" \
+                --bot-token "$SLACK_BOT_TOKEN" 2>/dev/null || true
+        # Enable channels and DMs
         docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
             -e OPENCLAW_HOME= \
             openclaw openclaw config set channels.slack.groupPolicy open 2>/dev/null || true
-        # Enable DMs
         docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
             -e OPENCLAW_HOME= \
             openclaw openclaw config set channels.slack.dm.enabled true 2>/dev/null || true
         docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
             -e OPENCLAW_HOME= \
             openclaw openclaw config set channels.slack.dmPolicy open 2>/dev/null || true
-        info "Slack configured (channels + DMs, messages appear as you)"
-    elif [[ -n "$SLACK_APP_TOKEN" ]] || [[ -n "$SLACK_USER_TOKEN" ]]; then
-        warn "Slack: need both SLACK_APP_TOKEN and SLACK_USER_TOKEN in .env"
+        docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
+            -e OPENCLAW_HOME= \
+            openclaw openclaw config set channels.slack.allowFrom '["*"]' 2>/dev/null || true
+        info "Slack configured (channels + DMs)"
+    elif [[ -n "$SLACK_APP_TOKEN" ]] || [[ -n "$SLACK_BOT_TOKEN" ]]; then
+        warn "Slack: need both SLACK_APP_TOKEN and SLACK_BOT_TOKEN in .env"
     else
-        info "Slack: not configured (set SLACK_APP_TOKEN + SLACK_USER_TOKEN in .env)"
+        info "Slack: not configured (set SLACK_APP_TOKEN + SLACK_BOT_TOKEN in .env)"
     fi
 
     # Tighten permissions after onboard — only owner + group (container UID 1001) need access
