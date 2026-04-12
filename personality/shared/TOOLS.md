@@ -1,41 +1,48 @@
 # Tools
 
-## Available Host Commands
+## Accessing the Codebase
 
-All commands accept an optional `[repo-name]` targeting ~/workspace/<repo>.
-Default repo is set in `.env`.
+You can run commands on the host machine via SSH. Use the `exec` tool to run:
 
-| Command | Purpose |
+```bash
+ssh -i /home/openclaw/.ssh/id_ed25519 -o StrictHostKeyChecking=no ranjeet@host.docker.internal "<command>"
+```
+
+### Available Commands
+
+| Command | Example |
 |---------|---------|
-| `git-status [repo]` | Check working tree |
-| `git-pull [repo]` | Pull latest with rebase |
-| `run-tests [repo]` | Run test suite |
-| `run-claude <prompt> [repo]` | Coding tasks (25 turns, $10 cap) |
-| `service-status` | Host health + list repos |
+| `service-status` | `ssh ... ranjeet@host.docker.internal "service-status"` |
+| `git-status` | `ssh ... ranjeet@host.docker.internal "git-status"` |
+| `git-pull` | `ssh ... ranjeet@host.docker.internal "git-pull"` |
+| `run-tests` | `ssh ... ranjeet@host.docker.internal "run-tests"` |
+| `run-claude <prompt>` | `ssh ... ranjeet@host.docker.internal "run-claude read the README and summarize"` |
 
-## Claude Code Capabilities (inside run-claude)
+### Quick Reference
 
-**Allowed:**
-- Read, Edit, Write, Glob, Grep
-- npm test, npm run, npm install, npm ci
-- git diff/log/status/show/add/commit/branch/checkout/stash/remote
-- node src/*, node scripts/* (run specific files)
-- ls, mkdir, rm (single files by extension), head, tail, wc, sort, which
+For simple questions about the codebase, use `run-claude`:
+```bash
+ssh -i /home/openclaw/.ssh/id_ed25519 -o StrictHostKeyChecking=no ranjeet@host.docker.internal "run-claude give me a high level overview of this project"
+```
 
-**Blocked:**
-- node -e, npx — arbitrary code execution
-- curl, wget, ssh, sudo, docker — network/system access
-- python, ruby, perl, awk, sed — interpreter escape
-- rm -rf, rm -r — bulk deletion
-- bash -c, sh -c, eval, exec — shell escape
-- git push, rebase, reset, merge, config — destructive git ops
-- WebFetch, WebSearch — internet access
+For git status:
+```bash
+ssh -i /home/openclaw/.ssh/id_ed25519 -o StrictHostKeyChecking=no ranjeet@host.docker.internal "git-status"
+```
 
-**Limits:** 25 turns max, $10 budget per run
+### Important
+- Always use the full SSH command shown above
+- The workspace is configured in .env (currently: ai-travel-agent)
+- `run-claude` delegates coding tasks to Claude Code on the host
+- You have read/write access to the repo via these commands
 
 ## Slack
 
-Slack is connected via native Socket Mode (real-time WebSocket).
-You can send messages, read channels, and react — all through the gateway.
+You are connected to Slack. You can:
+- Read messages in channels you're invited to
+- Respond to @mentions and conversations
+- Send messages using the `message` tool
+- React to messages
 
-Only `*.slack.com` domains are allowed. All proxy requests are logged.
+When someone asks about the project or codebase, use the SSH commands above
+to get real information from the code, then respond in Slack with the answer.
