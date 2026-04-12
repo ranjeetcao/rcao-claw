@@ -573,6 +573,12 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
         info "Slack: not configured (set SLACK_APP_TOKEN + SLACK_BOT_TOKEN in .env)"
     fi
 
+    # Configure SearXNG as web_search provider
+    docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
+        -e OPENCLAW_HOME= \
+        openclaw openclaw config set plugins.entries.searxng.config.webSearch.baseUrl "http://searxng:8080" 2>/dev/null || true
+    info "SearXNG web search configured"
+
     # Tighten permissions after onboard — only owner + group (container UID 1001) need access
     chmod -R 755 "$OPENCLAW_HOME" 2>/dev/null || true
     chmod 600 "$OPENCLAW_HOME/openclaw.json" 2>/dev/null || true

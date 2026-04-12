@@ -58,11 +58,11 @@ services:
       - HTTP_PROXY=http://squid:3128
       - HTTPS_PROXY=http://squid:3128
       # yamllint disable-line rule:line-length
-      - NO_PROXY=ollama,localhost,127.0.0.1,host.docker.internal
+      - NO_PROXY=ollama,searxng,valkey,localhost,127.0.0.1,host.docker.internal
       - http_proxy=http://squid:3128
       - https_proxy=http://squid:3128
       # yamllint disable-line rule:line-length
-      - no_proxy=ollama,localhost,127.0.0.1,host.docker.internal
+      - no_proxy=ollama,searxng,valkey,localhost,127.0.0.1,host.docker.internal
       # For production, consider using Docker secrets instead of env vars
       # Slack: user token mode (messages appear from the developer, not a bot)
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
@@ -94,6 +94,62 @@ services:
       retries: 3
       start_period: 15s
 
+  # SearXNG — self-hosted meta-search engine for web_search tool.
+  # No API keys needed. Queries routed through Squid for audit + ACL control.
+  searxng:
+    image: searxng/searxng:2026.3.28-cf5389afd
+    container_name: zupee-searxng
+    # SEARXNG_UWSGI_WORKERS=1 forces single-process mode, avoiding Python 3.14 multiprocessing bug
+    environment:
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-claw-search-default-secret}
+      - SEARXNG_VALKEY_URL=redis://valkey:6379
+      - GRANIAN_WORKERS=1
+      - GRANIAN_NO_MULTIPROCESS=true
+      - SEARXNG_LIMITER=false
+      - http_proxy=http://squid:3128
+      - https_proxy=http://squid:3128
+      - no_proxy=valkey,localhost,127.0.0.1
+    volumes:
+      - searxng-config:/etc/searxng
+    networks:
+      - squid-internal
+      - squid-egress
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    depends_on:
+      valkey:
+        condition: service_healthy
+      squid:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Valkey (Redis-compatible) — cache for SearXNG search results
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: zupee-valkey
+    networks:
+      - squid-internal
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
   squid:
     image: ubuntu/squid:latest
     container_name: zupee-squid
@@ -121,6 +177,7 @@ services:
 
 volumes:
   ollama-models:
+  searxng-config:
 
 networks:
   # Internal network - no outbound internet access

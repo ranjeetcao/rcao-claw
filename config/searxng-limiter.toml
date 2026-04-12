@@ -1,0 +1,8 @@
+# SearXNG limiter config for internal AI agent use
+# Disable all bot detection and rate limiting
+
+[botdetection.ip_limit]
+link_token = false
+
+[botdetection.ip_lists]
+pass_searxng_org = false
