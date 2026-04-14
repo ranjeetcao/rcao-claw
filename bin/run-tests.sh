@@ -25,18 +25,24 @@ done
 
 source "$(dirname "${BASH_SOURCE[0]}")/workspace-env.sh" "$_REPO"
 
-# Block shell metacharacters in test arguments
-for _arg in "${_TEST_ARGS[@]}"; do
-    if [[ "$_arg" =~ [\;\|\&\$\`\\\(\)\{\}\<\>] ]]; then
-        echo "ERROR: Invalid characters in test arguments"
-        exit 1
-    fi
-done
+# Block shell metacharacters in test arguments (skip if no args — Bash 3 compat)
+if [[ ${#_TEST_ARGS[@]} -gt 0 ]]; then
+    for _arg in "${_TEST_ARGS[@]}"; do
+        if [[ "$_arg" =~ [\;\|\&\$\`\\\(\)\{\}\<\>] ]]; then
+            echo "ERROR: Invalid characters in test arguments"
+            exit 1
+        fi
+    done
+fi
 
 cd "$WORKDIR"
 
 echo "[$(date -Iseconds)] TESTS START: $WORKDIR" >> "$LOGFILE"
-npm test -- "${_TEST_ARGS[@]}"
+if [[ ${#_TEST_ARGS[@]} -gt 0 ]]; then
+    npm test -- "${_TEST_ARGS[@]}"
+else
+    npm test
+fi
 EXIT_CODE=$?
 echo "[$(date -Iseconds)] TESTS END: exit=$EXIT_CODE" >> "$LOGFILE"
 exit $EXIT_CODE
