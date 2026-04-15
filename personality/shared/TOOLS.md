@@ -1,48 +1,57 @@
 # Tools
 
-## Accessing the Codebase
+## Two Ways to Access the Codebase
 
-You can run commands on the host machine via SSH. Use the `exec` tool to run:
+### 1. Direct Access (for most tasks)
 
-```bash
-ssh -i /home/openclaw/.ssh/id_ed25519 -o StrictHostKeyChecking=no ranjeet@host.docker.internal "<command>"
+Your workspace is mounted at `/workspace` inside the container. Use OpenClaw's built-in tools:
+
+| Tool | Example | Use for |
+|------|---------|---------|
+| `read` | Read `/workspace/package.json` | View file contents |
+| `write` | Write to `/workspace/docs/PLAN.md` | Create new files |
+| `edit` | Edit `/workspace/src/app.ts` | Modify existing files |
+| `exec` | `ls /workspace/` | List directories, run git, grep |
+
+**Examples:**
+- List services: `exec ls /workspace/`
+- Read a file: `read /workspace/README.md`
+- Git status: `exec cd /workspace && git status`
+- Search code: `exec grep -r "authGuard" /workspace/api-gateway/src/`
+- Git log: `exec cd /workspace && git log --oneline -10`
+
+### 2. Claude Code via SSH (for complex coding tasks)
+
+For tasks needing deep code understanding, refactoring, or multi-file changes,
+use Claude Code on the host via SSH:
+
+```
+exec ssh -i /home/openclaw/.ssh/id_ed25519 -o StrictHostKeyChecking=no ranjeet@host.docker.internal "run-claude <prompt>"
 ```
 
-### Available Commands
+**Examples:**
+- Code review: `run-claude review the auth flow in user-service`
+- Write tests: `run-claude write unit tests for the booking service`
+- Refactor: `run-claude refactor the error handling in api-gateway`
+- Create PR: `run-claude create a feature branch and fix the rate limiter`
 
-| Command | Example |
-|---------|---------|
-| `service-status` | `ssh ... ranjeet@host.docker.internal "service-status"` |
-| `git-status` | `ssh ... ranjeet@host.docker.internal "git-status"` |
-| `git-pull` | `ssh ... ranjeet@host.docker.internal "git-pull"` |
-| `run-tests` | `ssh ... ranjeet@host.docker.internal "run-tests"` |
-| `run-claude <prompt>` | `ssh ... ranjeet@host.docker.internal "run-claude read the README and summarize"` |
+**Limits:** 50 turns max, $10 budget per run-claude invocation.
 
-### Quick Reference
+### When to Use Which
 
-For simple questions about the codebase, use `run-claude`:
-```bash
-ssh -i /home/openclaw/.ssh/id_ed25519 -o StrictHostKeyChecking=no ranjeet@host.docker.internal "run-claude give me a high level overview of this project"
-```
-
-For git status:
-```bash
-ssh -i /home/openclaw/.ssh/id_ed25519 -o StrictHostKeyChecking=no ranjeet@host.docker.internal "git-status"
-```
-
-### Important
-- Always use the full SSH command shown above
-- The workspace is configured in .env (currently: ai-travel-agent)
-- `run-claude` delegates coding tasks to Claude Code on the host
-- You have read/write access to the repo via these commands
+| Task | Use |
+|------|-----|
+| Read files, check git status, list dirs | Direct (read/exec) |
+| Answer questions about code | Direct (read) |
+| Search for patterns | Direct (exec grep) |
+| Simple edits (typo, config change) | Direct (edit) |
+| Create proposals/plans in docs/ | Direct (write) |
+| Complex refactoring | SSH → run-claude |
+| Write tests following project patterns | SSH → run-claude |
+| Multi-file code changes | SSH → run-claude |
+| Code review with deep analysis | SSH → run-claude |
 
 ## Slack
 
-You are connected to Slack. You can:
-- Read messages in channels you're invited to
-- Respond to @mentions and conversations
-- Send messages using the `message` tool
-- React to messages
-
-When someone asks about the project or codebase, use the SSH commands above
-to get real information from the code, then respond in Slack with the answer.
+Connected via Socket Mode. Send messages, read channels, react.
+All Slack traffic proxied through Squid (HTTPS only, *.slack.com).

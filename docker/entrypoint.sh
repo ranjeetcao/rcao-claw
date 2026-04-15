@@ -30,6 +30,12 @@ for f in AGENTS.md SOUL.md USER.md IDENTITY.md TOOLS.md; do
 done
 echo "[entrypoint] Personality files verified"
 
+# Allow git operations on mounted workspace (owner differs from container user)
+if command -v git &>/dev/null && [[ -d /workspace ]]; then
+    git config --global --add safe.directory /workspace 2>/dev/null || true
+    echo "[entrypoint] Git safe.directory configured for /workspace"
+fi
+
 # Wait for Ollama to be ready (may be Docker container or native host install)
 OLLAMA_API="${OLLAMA_HOST:-http://ollama:11434}"
 echo "[entrypoint] Waiting for Ollama at $OLLAMA_API..."
