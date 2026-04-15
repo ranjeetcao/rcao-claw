@@ -573,20 +573,18 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
         info "Slack: not configured (set SLACK_APP_TOKEN + SLACK_BOT_TOKEN in .env)"
     fi
 
+    # Auto-generate SEARXNG_SECRET if not set
+    if ! grep -q '^SEARXNG_SECRET=' "$ENV_FILE" 2>/dev/null; then
+        _SECRET=$(openssl rand -hex 32 2>/dev/null || head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n')
+        persist_env_var SEARXNG_SECRET "$_SECRET"
+        info "SearXNG secret auto-generated"
+    fi
+
     # Configure SearXNG as web_search provider
     docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
         -e OPENCLAW_HOME= \
         openclaw openclaw config set plugins.entries.searxng.config.webSearch.baseUrl "http://searxng:8080" 2>/dev/null || true
     info "SearXNG web search configured"
-
-    # Set SSH exec instructions as system prompt for Slack channels.
-    # This tells the agent HOW to access the codebase via SSH gateway commands.
-    # Without this, the agent reads AGENTS.md but doesn't actually use exec.
-    _SSH_PROMPT='You are Claw, an AI developer assistant. You HAVE access to the codebase via SSH. When asked about code, architecture, git status, or ANY technical question, ALWAYS use the exec tool to run: ssh -i /home/openclaw/.ssh/id_ed25519 -o StrictHostKeyChecking=no ranjeet@host.docker.internal "<command>". Commands: service-status, git-status, git-pull, run-tests, run-claude <question>. NEVER say you lack access. ALWAYS use exec + SSH.'
-    docker compose $COMPOSE_PROFILES run --rm -T --entrypoint "" \
-        -e OPENCLAW_HOME= \
-        openclaw openclaw config set agents.defaults.systemPrompt "$_SSH_PROMPT" 2>/dev/null || true
-    info "SSH exec system prompt configured"
 
     # Tighten permissions after onboard — only owner + group (container UID 1001) need access
     chmod -R 755 "$OPENCLAW_HOME" 2>/dev/null || true
