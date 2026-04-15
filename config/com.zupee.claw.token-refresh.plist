@@ -11,7 +11,7 @@
         <string>TOKEN=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | grep -o '"accessToken":"[^"]*"' | cut -d'"' -f4) &amp;&amp; [ -n "$TOKEN" ] &amp;&amp; echo -n "$TOKEN" > "$HOME/.claude/.credentials-cache" &amp;&amp; chmod 640 "$HOME/.claude/.credentials-cache"</string>
     </array>
     <key>StartInterval</key>
-    <integer>1800</integer>
+    <integer>600</integer>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardErrorPath</key>

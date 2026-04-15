@@ -13,3 +13,6 @@ logs/squid/
 *.rate-limit
 *.rate-limit.lock
 *.rate-limit.tmp.*
+
+# Claude Code runtime
+.claude/worktrees/

@@ -48,10 +48,10 @@ CLAW_CONTAINER="zupee-claw"
 REQUEST_TIMEOUT=120
 
 CANDIDATE_MODELS=(
-    "gemma4:e2b"
+    "qwen3.5:9b"
     "qwen3:8b"
     "qwen3.5:4b"
-    "qwen3.5:9b"
+    "gemma4:e2b"
 )
 
 # --- Helpers -----------------------------------------------------------------

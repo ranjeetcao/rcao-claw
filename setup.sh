@@ -106,8 +106,8 @@ else
 fi
 
 # Fallback for OLLAMA_MODEL
-OLLAMA_MODEL="${OLLAMA_MODEL:-gemma4:e2b}"
-# Fallback for model memory (GiB) — 10 GiB for gemma4:e2b default
+OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+# Fallback for model memory (GiB) — 10 GiB for qwen3.5:9b default
 OLLAMA_MODEL_MEM="${OLLAMA_MODEL_MEM:-10}"
 
 # --- Pre-flight checks -------------------------------------------------------

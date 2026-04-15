@@ -1,41 +1,57 @@
 # Tools
 
-## Available Host Commands
+## Two Ways to Access the Codebase
 
-All commands accept an optional `[repo-name]` targeting ~/workspace/<repo>.
-Default repo is set in `.env`.
+### 1. Direct Access (for most tasks)
 
-| Command | Purpose |
-|---------|---------|
-| `git-status [repo]` | Check working tree |
-| `git-pull [repo]` | Pull latest with rebase |
-| `run-tests [repo]` | Run test suite |
-| `run-claude <prompt> [repo]` | Coding tasks (25 turns, $10 cap) |
-| `service-status` | Host health + list repos |
+Your workspace is mounted at `/workspace` inside the container. Use OpenClaw's built-in tools:
 
-## Claude Code Capabilities (inside run-claude)
+| Tool | Example | Use for |
+|------|---------|---------|
+| `read` | Read `/workspace/package.json` | View file contents |
+| `write` | Write to `/workspace/docs/PLAN.md` | Create new files |
+| `edit` | Edit `/workspace/src/app.ts` | Modify existing files |
+| `exec` | `ls /workspace/` | List directories, run git, grep |
 
-**Allowed:**
-- Read, Edit, Write, Glob, Grep
-- npm test, npm run, npm install, npm ci
-- git diff/log/status/show/add/commit/branch/checkout/stash/remote
-- node src/*, node scripts/* (run specific files)
-- ls, mkdir, rm (single files by extension), head, tail, wc, sort, which
+**Examples:**
+- List services: `exec ls /workspace/`
+- Read a file: `read /workspace/README.md`
+- Git status: `exec cd /workspace && git status`
+- Search code: `exec grep -r "authGuard" /workspace/api-gateway/src/`
+- Git log: `exec cd /workspace && git log --oneline -10`
 
-**Blocked:**
-- node -e, npx — arbitrary code execution
-- curl, wget, ssh, sudo, docker — network/system access
-- python, ruby, perl, awk, sed — interpreter escape
-- rm -rf, rm -r — bulk deletion
-- bash -c, sh -c, eval, exec — shell escape
-- git push, rebase, reset, merge, config — destructive git ops
-- WebFetch, WebSearch — internet access
+### 2. Claude Code via SSH (for complex coding tasks)
 
-**Limits:** 25 turns max, $10 budget per run
+For tasks needing deep code understanding, refactoring, or multi-file changes,
+use Claude Code on the host via SSH:
+
+```
+exec ssh -i /home/openclaw/.ssh/id_ed25519 -o StrictHostKeyChecking=no ranjeet@host.docker.internal "run-claude <prompt>"
+```
+
+**Examples:**
+- Code review: `run-claude review the auth flow in user-service`
+- Write tests: `run-claude write unit tests for the booking service`
+- Refactor: `run-claude refactor the error handling in api-gateway`
+- Create PR: `run-claude create a feature branch and fix the rate limiter`
+
+**Limits:** 50 turns max, $10 budget per run-claude invocation.
+
+### When to Use Which
+
+| Task | Use |
+|------|-----|
+| Read files, check git status, list dirs | Direct (read/exec) |
+| Answer questions about code | Direct (read) |
+| Search for patterns | Direct (exec grep) |
+| Simple edits (typo, config change) | Direct (edit) |
+| Create proposals/plans in docs/ | Direct (write) |
+| Complex refactoring | SSH → run-claude |
+| Write tests following project patterns | SSH → run-claude |
+| Multi-file code changes | SSH → run-claude |
+| Code review with deep analysis | SSH → run-claude |
 
 ## Slack
 
-Slack is connected via native Socket Mode (real-time WebSocket).
-You can send messages, read channels, and react — all through the gateway.
-
-Only `*.slack.com` domains are allowed. All proxy requests are logged.
+Connected via Socket Mode. Send messages, read channels, react.
+All Slack traffic proxied through Squid (HTTPS only, *.slack.com).
