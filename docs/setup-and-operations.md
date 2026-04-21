@@ -44,9 +44,8 @@ cp .env.example .env
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
 | `OPENCLAW_VERSION` | `2026.4.2` | Yes | Pinned Claw gateway version |
-| `REPO` | `my-project` | Yes | Default repo directory under workspace |
-| `WORKSPACE_DIR` | `~/workspace` | Yes | Base directory where dev repos live |
-| `OLLAMA_MODEL` | `gemma4:e2b` | Yes | LLM model for local inference |
+| `WORKSPACE` | `~/workspace/my-project` | Yes | Target repo directory (Claude Code operates here) |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | Yes | LLM model for local inference |
 | `SLACK_BOT_TOKEN` | (empty) | No | Slack bot OAuth token (`xoxb-...`) |
 | `SLACK_APP_TOKEN` | (empty) | No | Slack app-level token (`xapp-...`) |
 
@@ -94,13 +93,13 @@ The setup script runs through 7 phases with interactive prompts at each step. Al
   - Reloads sshd (Linux) or notifies for restart (macOS)
 
 #### Phase 5: Claude Code Config
-- Deploys `config/claude-settings.json` to `$WORKSPACE_DIR/.claude/settings.json`
+- Deploys `config/claude-settings.json` to `$WORKSPACE/.claude/settings.json`
 - Creates `.claude/` directory if it doesn't exist
 
 #### Phase 6: Docker Build & Start
 - **Prompt:** "Build and start Docker containers? [y/N]"
   - Builds openclaw image with `OPENCLAW_VERSION` build arg
-  - Starts all 3 services (ollama, squid, openclaw)
+  - Starts all services (ollama, squid, searxng, valkey, openclaw)
   - Waits up to 90s for Web UI health check
   - Extracts gateway auth token from `openclaw.json`
   - Opens browser to `http://localhost:3000`
@@ -193,7 +192,7 @@ docker compose -f docker/docker-compose.yml exec openclaw \
 
 ### Working with Repos
 
-The default repo is set in `.env` as `REPO`. All gateway commands accept an optional repo override:
+The default workspace is set in `.env` as `WORKSPACE`. All gateway commands accept an optional repo override (a name under the workspace parent, or a full path):
 
 ```bash
 # Default repo
@@ -203,7 +202,7 @@ ssh openclaw-bot@host "git-status"
 ssh openclaw-bot@host "git-status other-project"
 ```
 
-Available repos are any directories under `$WORKSPACE_DIR/`.
+Available repos are any directories under `$WORKSPACE/`.
 
 ## Adding a New Command
 
@@ -430,10 +429,10 @@ docker exec rcao-claw curl -s http://ollama:11434/api/tags
 tail -20 logs/claude.log
 
 # Verify Claude settings deployed
-cat $WORKSPACE_DIR/.claude/settings.json
+cat $WORKSPACE/.claude/settings.json
 
 # Check workspace directory exists
-ls -la $WORKSPACE_DIR/$REPO/
+ls -la $WORKSPACE/
 ```
 
 ### Permission errors (file ownership)

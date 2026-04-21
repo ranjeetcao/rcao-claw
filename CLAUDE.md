@@ -7,7 +7,7 @@ RCao Claw is a secure, air-gapped AI development platform. It runs OpenClaw insi
 **Key separation:**
 - `rcao-claw/` = Claw's code (scripts, configs, Docker, personalities)
 - `~/.openclaw/` = Runtime state per machine (managed by OpenClaw, not in repo)
-- `$WORKSPACE_DIR/` = actual dev codebase (where Claude Code operates)
+- `$WORKSPACE/` = actual dev codebase (where Claude Code operates)
 
 **Data flow:**
 ```
@@ -24,7 +24,7 @@ Browser -> localhost:3000 (Claw Web UI)
               +-- run-tests.sh, run-claude.sh
                       |
                       v
-                  Claude Code (locked to $WORKSPACE_DIR/$REPO)
+                  Claude Code (locked to $WORKSPACE)
 ```
 
 ## Directory Map
@@ -63,7 +63,7 @@ rcao-claw/
 │   └── authorized_keys       # ForceCommand-restricted key
 ├── docker/
 │   ├── Dockerfile            # Claw + SSH client + Slack dependencies
-│   ├── docker-compose.yml    # Stack: openclaw + squid (+ optional ollama)
+│   ├── docker-compose.yml    # Stack: openclaw + squid + searxng + valkey (+ optional ollama)
 │   ├── entrypoint.sh         # Container startup
 │   └── squid.conf            # Squid proxy ACL (Slack domains only)
 ├── docs/
@@ -126,7 +126,7 @@ Port binding: `127.0.0.1:3000:3000` (Web UI, localhost only).
 | `run-claude <prompt> [repo]` | `bin/run-claude.sh` | Coding tasks (25 turns, $10 cap) |
 | `service-status` | `bin/service-status.sh` | Host health + list repos |
 
-Default repo comes from `REPO` in `.env`. All commands accept optional `[repo]` override.
+Default workspace comes from `WORKSPACE` in `.env`. All commands accept an optional `[repo]` override (a name under the workspace parent, or a full path).
 
 To add a new command: create `bin/<name>.sh`, add `<name>` to `bin/allowed-commands.conf`.
 
@@ -146,6 +146,8 @@ Managed via `config/claude-settings.json` and `bin/run-claude.sh` flags.
 |---------|-----------|-------|-----------|----------|
 | `openclaw` | `rcao-claw` | Built from `docker/Dockerfile` | Dynamic (CLAW_MEM, CLAW_CPUS) | isolated, host-access, squid-internal, web-access |
 | `ollama` (docker mode only) | `rcao-ollama` | `ollama/ollama:0.20.3` | Dynamic (OLLAMA_MEM, OLLAMA_CPUS) | isolated |
+| `searxng` | `rcao-searxng` | `searxng/searxng:2026.3.28-cf5389afd` | 512M, 0.5 CPU | squid-internal |
+| `valkey` | `rcao-valkey` | `valkey/valkey:8-alpine` | 128M, 0.25 CPU | squid-internal |
 | `squid` | `rcao-squid` | `ubuntu/squid:latest` | 256M, 0.5 CPU | squid-internal, squid-egress |
 
 Volume mounts:

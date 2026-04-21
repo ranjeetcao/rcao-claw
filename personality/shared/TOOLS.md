@@ -35,7 +35,7 @@ exec ssh -i /home/openclaw/.ssh/id_ed25519 -o StrictHostKeyChecking=no ranjeet@h
 - Refactor: `run-claude refactor the error handling in api-gateway`
 - Create PR: `run-claude create a feature branch and fix the rate limiter`
 
-**Limits:** 50 turns max, $10 budget per run-claude invocation.
+**Limits:** 25 turns max, $10 budget per run-claude invocation.
 
 ### When to Use Which
 

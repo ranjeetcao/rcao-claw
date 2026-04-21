@@ -615,7 +615,7 @@ main() {
         # Default: read from .env
         local env_model
         env_model=$(grep '^OLLAMA_MODEL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-        env_model="${env_model:-gemma4:e2b}"
+        env_model="${env_model:-qwen3.5:9b}"
         models=("$env_model")
     fi
 

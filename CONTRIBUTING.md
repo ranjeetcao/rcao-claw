@@ -13,7 +13,7 @@ Thanks for your interest in contributing! This guide covers how to set up the pr
 2. **Copy environment config:**
    ```bash
    cp .env.example .env
-   # Edit .env to set WORKSPACE_DIR, REPO, OLLAMA_MODEL
+   # Edit .env to set WORKSPACE, OLLAMA_MODEL
    ```
 
 3. **Run setup:**

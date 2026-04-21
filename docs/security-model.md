@@ -147,7 +147,7 @@ grep -Fqx "$CMD_NAME" "$ALLOWLIST"
 
 ### Layer 11: Persistent Deny Rules
 
-**What it does:** `config/claude-settings.json` deployed to `$WORKSPACE_DIR/.claude/settings.json` provides persistent deny rules independent of CLI flags.
+**What it does:** `config/claude-settings.json` deployed to `$WORKSPACE/.claude/settings.json` provides persistent deny rules independent of CLI flags.
 
 **Protects against:** Bypass attempts that might circumvent CLI flags but not file-based settings.
 

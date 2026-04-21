@@ -31,7 +31,7 @@ You (browser) -> localhost:3000 (Claw Web UI)
               Host: git-status, git-pull, run-tests, run-claude
                       |
                       v
-              Claude Code (locked to $WORKSPACE_DIR/$REPO)
+              Claude Code (locked to $WORKSPACE)
 ```
 
 The AI operates through a two-layer sandbox:
@@ -56,7 +56,7 @@ cd rcao-claw
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env — set WORKSPACE_DIR, REPO, OLLAMA_MODEL
+# Edit .env — set WORKSPACE, OLLAMA_MODEL
 
 # 3. Run setup (creates SSH keys, host user, copies configs)
 ./setup.sh
@@ -72,9 +72,8 @@ All settings live in `.env` (copied from `.env.example`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENCLAW_VERSION` | `2026.4.2` | Pinned Claw version |
-| `REPO` | `my-project` | Default repo name under workspace dir |
-| `WORKSPACE_DIR` | `~/workspace` | Root directory where your repos live |
-| `OLLAMA_MODEL` | `gemma4:e2b` | Ollama model for local inference |
+| `WORKSPACE` | `~/workspace/my-project` | Target repo directory (Claude Code operates here) |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | Ollama model for local inference |
 
 ## Daily Usage
 
@@ -137,7 +136,7 @@ cat bin/allowed-commands.conf
 **Ollama model not responding:**
 ```bash
 # Pull the model manually
-docker compose -f docker/docker-compose.yml exec ollama ollama pull gemma4:e2b
+docker compose -f docker/docker-compose.yml exec ollama ollama pull qwen3.5:9b
 # Check Ollama status
 docker compose -f docker/docker-compose.yml exec ollama ollama list
 ```
@@ -147,7 +146,7 @@ docker compose -f docker/docker-compose.yml exec ollama ollama list
 # Check Claude execution log
 tail -f logs/claude.log
 # Verify workspace exists
-ls -la $WORKSPACE_DIR/$REPO
+ls -la $WORKSPACE
 ```
 
 ## Teardown
