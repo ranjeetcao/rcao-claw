@@ -9,7 +9,7 @@
 
 ## 1. Problem Statement
 
-The Zupee Claw platform has solid infrastructure and security layers (14-layer model, 72 passing destructive tests, 5-network Docker isolation). However, an audit revealed gaps across four areas that would block or confuse new employee onboarding, leave failures undetected, and allow regressions to ship:
+The RCao Claw platform has solid infrastructure and security layers (14-layer model, 72 passing destructive tests, 5-network Docker isolation). However, an audit revealed gaps across four areas that would block or confuse new employee onboarding, leave failures undetected, and allow regressions to ship:
 
 - **No CI/CD pipeline** — shellcheck, secret scanning, and security config checks exist as Claude Code hooks but don't run on human commits or in CI
 - **Stale documentation** — CLAUDE.md, README.md, and all docs/*.md reference the old `WORKSPACE_DIR`/`REPO` variables and `gemma4:e2b` model
@@ -69,7 +69,7 @@ The container's `restart: unless-stopped` policy surfaces this as an unhealthy s
 
 On macOS, Ollama is started with a background `&` that dies if the terminal closes or the process crashes. After laptop sleep/wake, Ollama is dead and the agent fails.
 
-Fix: Add `config/com.zupee.claw.ollama.plist` LaunchAgent with `KeepAlive: true`. Install in `setup.sh` alongside the existing token-refresh LaunchAgent. Set `OLLAMA_MAX_LOADED_MODELS=1` and `OLLAMA_NUM_PARALLEL=1` to prevent OOM.
+Fix: Add `config/com.rcao.claw.ollama.plist` LaunchAgent with `KeepAlive: true`. Install in `setup.sh` alongside the existing token-refresh LaunchAgent. Set `OLLAMA_MAX_LOADED_MODELS=1` and `OLLAMA_NUM_PARALLEL=1` to prevent OOM.
 
 ---
 
@@ -112,7 +112,7 @@ _Target: this sprint. Effort: 3-4 days._
 
 Run automatically at the end of `setup.sh` (or manually). Validates:
 
-- [ ] Docker containers running and healthy (zupee-claw, zupee-squid, zupee-searxng, zupee-valkey)
+- [ ] Docker containers running and healthy (rcao-claw, rcao-squid, rcao-searxng, rcao-valkey)
 - [ ] Gateway HTTP health: `curl -sf http://localhost:3000/health`
 - [ ] Ollama reachable and model loaded: `curl http://localhost:11434/api/tags | grep $OLLAMA_MODEL`
 - [ ] SSH ForceCommand works: `ssh -i config/openclaw-docker-key $USER@localhost service-status`
@@ -184,7 +184,7 @@ This script is already in the SSH gateway allowlist — the agent can self-repor
 
 #### 4.2 Log Rotation
 
-Add `config/com.zupee.claw.logrotate.plist` LaunchAgent:
+Add `config/com.rcao.claw.logrotate.plist` LaunchAgent:
 
 - Runs daily
 - Caps `logs/*.log` at 10 MB, keeps 3 rotations

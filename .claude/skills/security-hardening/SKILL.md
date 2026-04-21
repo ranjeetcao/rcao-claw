@@ -1,6 +1,6 @@
 # Security Hardening
 
-Comprehensive reference for all 11 protection layers in the Zupee Claw stack.
+Comprehensive reference for all 11 protection layers in the RCao Claw stack.
 
 ## The 11 Security Layers
 

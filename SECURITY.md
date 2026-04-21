@@ -10,17 +10,17 @@ Security fixes are applied to the `main` branch. There are no versioned releases
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in zupee-claw, please report it responsibly. **Do not open a public GitHub issue for security vulnerabilities.**
+If you discover a security vulnerability in rcao-claw, please report it responsibly. **Do not open a public GitHub issue for security vulnerabilities.**
 
 ### Preferred: GitHub Private Vulnerability Reporting
 
-1. Go to the [Security tab](https://github.com/zupee-labs/zupee-claw/security) of this repository
+1. Go to the [Security tab](https://github.com/ranjeetcao/rcao-claw/security) of this repository
 2. Click **"Report a vulnerability"**
 3. Fill out the form with the details described below
 
 ### Alternative: Email
 
-If GitHub private reporting is unavailable, email **security@zupee.com** with the subject line: `[zupee-claw] Security Vulnerability Report`.
+If GitHub private reporting is unavailable, email **ranjeet.don@gmail.com** with the subject line: `[rcao-claw] Security Vulnerability Report`.
 
 ## What to Include
 

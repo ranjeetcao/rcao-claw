@@ -49,7 +49,7 @@ rm -rf ~/.openclaw
 rm -f config/openclaw-docker-key config/openclaw-docker-key.pub
 ./setup.sh --role developer
 # Verify: curl -sf http://localhost:3000/health
-# Verify: docker ps | grep zupee
+# Verify: docker ps | grep rcao
 # Verify: ls ~/.openclaw/workspace/SOUL.md
 ```
 
@@ -74,13 +74,13 @@ grep "developer" ~/.openclaw/workspace/SOUL.md  # Should find developer
 
 ```bash
 # From inside the container:
-docker exec zupee-claw ssh -i /home/openclaw/.ssh/id_ed25519 \
+docker exec rcao-claw ssh -i /home/openclaw/.ssh/id_ed25519 \
   ranjeet@host.docker.internal "service-status"
 
-docker exec zupee-claw ssh -i /home/openclaw/.ssh/id_ed25519 \
+docker exec rcao-claw ssh -i /home/openclaw/.ssh/id_ed25519 \
   ranjeet@host.docker.internal "git-status"
 
-docker exec zupee-claw ssh -i /home/openclaw/.ssh/id_ed25519 \
+docker exec rcao-claw ssh -i /home/openclaw/.ssh/id_ed25519 \
   ranjeet@host.docker.internal "run-claude say hello"
 ```
 
@@ -88,23 +88,23 @@ docker exec zupee-claw ssh -i /home/openclaw/.ssh/id_ed25519 \
 
 ```bash
 # Simple response
-docker exec zupee-claw ssh ... "run-claude say hello"
+docker exec rcao-claw ssh ... "run-claude say hello"
 
 # Code review
-docker exec zupee-claw ssh ... "run-claude review the changes in <file>"
+docker exec rcao-claw ssh ... "run-claude review the changes in <file>"
 
 # File creation (tests Write permission)
-docker exec zupee-claw ssh ... "run-claude create a test file at /tmp/test.md with hello world"
+docker exec rcao-claw ssh ... "run-claude create a test file at /tmp/test.md with hello world"
 
 # Blocked tools (should fail gracefully)
-docker exec zupee-claw ssh ... "run-claude run curl google.com"
+docker exec rcao-claw ssh ... "run-claude run curl google.com"
 ```
 
 ### Test 6: Proposal Workflow
 
 ```bash
 # Agent creates proposal
-docker exec zupee-claw ssh ... "run-claude review api-gateway/src/ and create a proposal PR if issues found"
+docker exec rcao-claw ssh ... "run-claude review api-gateway/src/ and create a proposal PR if issues found"
 
 # Verify: gh pr list --search "proposal:" --state open
 # Verify: ls docs/proposed/

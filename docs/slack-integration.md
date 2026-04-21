@@ -91,7 +91,7 @@ Setup automatically configures OpenClaw with:
 
 ```bash
 # Check Slack connection
-docker logs zupee-claw 2>&1 | grep -i slack
+docker logs rcao-claw 2>&1 | grep -i slack
 
 # Send a test from the Web UI and check if it appears in Slack
 ```
@@ -163,7 +163,7 @@ When Claw creates a proposal PR, it notifies the team:
 grep SLACK .env
 
 # Check container logs for Slack errors
-docker logs zupee-claw 2>&1 | grep -i "slack\|socket"
+docker logs rcao-claw 2>&1 | grep -i "slack\|socket"
 
 # Check Squid allows Slack traffic
 curl --proxy http://127.0.0.1:3128 https://slack.com/api/api.test

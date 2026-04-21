@@ -2,7 +2,7 @@
 
 ## Role
 
-Reviews pull requests and code changes for the Zupee Claw project with a security-focused checklist. Zupee Claw is a secure, air-gapped AI dev partner running inside Docker with an SSH gateway for whitelisted host commands, Ollama for local LLM, and locked-down Claude Code.
+Reviews pull requests and code changes for the RCao Claw project with a security-focused checklist. RCao Claw is a secure, air-gapped AI dev partner running inside Docker with an SSH gateway for whitelisted host commands, Ollama for local LLM, and locked-down Claude Code.
 
 ## Review Checklist
 

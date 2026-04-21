@@ -1,6 +1,6 @@
 # Security Model
 
-Zupee Claw implements a defense-in-depth security architecture with 14 overlapping layers. No single layer is the sole line of defense -- each layer assumes the others may be compromised.
+RCao Claw implements a defense-in-depth security architecture with 14 overlapping layers. No single layer is the sole line of defense -- each layer assumes the others may be compromised.
 
 ## Design Principles
 
@@ -308,5 +308,5 @@ tail -f logs/claude.log
 tail -f logs/squid/access.log
 
 # Ollama air-gapped (should fail)
-docker exec zupee-ollama curl -s https://google.com  # Should fail (no network)
+docker exec rcao-ollama curl -s https://google.com  # Should fail (no network)
 ```

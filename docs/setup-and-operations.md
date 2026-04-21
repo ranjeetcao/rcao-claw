@@ -28,8 +28,8 @@
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/zupee-labs/zupee-claw.git
-cd zupee-claw
+git clone https://github.com/ranjeetcao/rcao-claw.git
+cd rcao-claw
 ```
 
 ### 2. Configure Environment
@@ -178,7 +178,7 @@ cd docker && docker compose logs -f squid
 
 ```bash
 # All containers running?
-docker ps --filter "name=zupee-"
+docker ps --filter "name=rcao-"
 
 # Web UI health
 curl -sf http://localhost:3000/health
@@ -258,13 +258,13 @@ Available repos are any directories under `$WORKSPACE_DIR/`.
 2. Pull the new model (requires temporary internet access):
    ```bash
    # Connect Ollama to internet temporarily
-   docker network connect zupee-claw_squid-egress zupee-ollama
+   docker network connect rcao-claw_squid-egress rcao-ollama
 
    # Pull model
    docker compose -f docker/docker-compose.yml exec ollama ollama pull llama3.1
 
    # Disconnect from internet
-   docker network disconnect zupee-claw_squid-egress zupee-ollama
+   docker network disconnect rcao-claw_squid-egress rcao-ollama
    ```
 
 3. Update `openclaw.json` to reference the new model ID.
@@ -374,7 +374,7 @@ The cleanup script walks through each component with individual confirmation pro
 
 ```bash
 # Check container is running
-docker ps --filter "name=zupee-claw"
+docker ps --filter "name=rcao-claw"
 
 # Check health endpoint
 curl -v http://localhost:3000/health
@@ -383,7 +383,7 @@ curl -v http://localhost:3000/health
 cd docker && docker compose logs openclaw
 
 # Verify port binding
-docker port zupee-claw
+docker port rcao-claw
 # Should show: 3000/tcp -> 127.0.0.1:3000
 ```
 
@@ -400,10 +400,10 @@ cat /etc/ssh/sshd_config.d/openclaw.conf
 cat ~openclaw-bot/.ssh/authorized_keys
 
 # Check SSH key in container
-docker exec zupee-claw ls -la /home/openclaw/.ssh/
+docker exec rcao-claw ls -la /home/openclaw/.ssh/
 
 # Test SSH manually
-docker exec zupee-claw ssh -v -i /home/openclaw/.ssh/id_ed25519 \
+docker exec rcao-claw ssh -v -i /home/openclaw/.ssh/id_ed25519 \
   openclaw-bot@host.docker.internal "service-status"
 ```
 
@@ -411,7 +411,7 @@ docker exec zupee-claw ssh -v -i /home/openclaw/.ssh/id_ed25519 \
 
 ```bash
 # Check container health
-docker inspect --format='{{.State.Health.Status}}' zupee-ollama
+docker inspect --format='{{.State.Health.Status}}' rcao-ollama
 
 # Check Ollama logs
 cd docker && docker compose logs ollama
@@ -420,7 +420,7 @@ cd docker && docker compose logs ollama
 docker compose -f docker/docker-compose.yml exec ollama ollama list
 
 # Verify network connectivity from openclaw
-docker exec zupee-claw curl -s http://ollama:11434/api/tags
+docker exec rcao-claw curl -s http://ollama:11434/api/tags
 ```
 
 ### Claude Code commands failing
@@ -464,7 +464,7 @@ cat ~openclaw-bot/openclaw/.rate-limit
 
 ```bash
 # Check Squid container
-docker ps --filter "name=zupee-squid"
+docker ps --filter "name=rcao-squid"
 
 # Check Squid logs
 tail -f logs/squid/access.log
@@ -486,10 +486,10 @@ If containers are OOM-killed or CPU-throttled:
 
 ```bash
 # Check resource usage
-docker stats zupee-claw zupee-ollama zupee-squid
+docker stats rcao-claw rcao-ollama rcao-squid
 
 # Check for OOM kills
-docker inspect --format='{{.State.OOMKilled}}' zupee-ollama
+docker inspect --format='{{.State.OOMKilled}}' rcao-ollama
 
 # Increase limits in .env or docker-compose.yml
 # Ollama needs the most resources (50% RAM recommended)

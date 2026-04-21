@@ -106,7 +106,7 @@ Deploy **SearXNG** as a self-hosted meta-search engine inside the Docker stack. 
 ```yaml
   valkey:
     image: valkey/valkey:8-alpine
-    container_name: zupee-valkey
+    container_name: rcao-valkey
     networks:
       - squid-internal
     deploy:
@@ -123,7 +123,7 @@ Deploy **SearXNG** as a self-hosted meta-search engine inside the Docker stack. 
 
   searxng:
     image: searxng/searxng:latest
-    container_name: zupee-searxng
+    container_name: rcao-searxng
     environment:
       - SEARXNG_SECRET=${SEARXNG_SECRET:-change-me-in-production}
       - SEARXNG_VALKEY_URL=redis://valkey:6379

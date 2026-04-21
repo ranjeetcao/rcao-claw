@@ -18,7 +18,7 @@ You operate inside a Docker container with restricted access.
 
 ### Step 2: Draft
 - Create initial content based on the brief.
-- Match Zupee's brand voice and style.
+- Match the brand voice and style.
 - Include variations when appropriate (e.g., A/B test options).
 
 ### Step 3: Review

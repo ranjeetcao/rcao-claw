@@ -1,11 +1,11 @@
-# Zupee Claw - Claude Code Project Guide
+# RCao Claw - Claude Code Project Guide
 
 ## Architecture
 
-Zupee Claw is a secure AI development platform for Zupee employees. It runs OpenClaw inside Docker with local LLM inference via Ollama (native on macOS for Metal GPU, or Docker on Linux) and delegates coding tasks to Claude Code through a locked-down SSH gateway.
+RCao Claw is a secure, air-gapped AI development platform. It runs OpenClaw inside Docker with local LLM inference via Ollama (native on macOS for Metal GPU, or Docker on Linux) and delegates coding tasks to Claude Code through a locked-down SSH gateway.
 
 **Key separation:**
-- `zupee-claw/` = Claw's code (scripts, configs, Docker, personalities)
+- `rcao-claw/` = Claw's code (scripts, configs, Docker, personalities)
 - `~/.openclaw/` = Runtime state per machine (managed by OpenClaw, not in repo)
 - `$WORKSPACE_DIR/` = actual dev codebase (where Claude Code operates)
 
@@ -30,7 +30,7 @@ Browser -> localhost:3000 (Claw Web UI)
 ## Directory Map
 
 ```
-zupee-claw/
+rcao-claw/
 ├── .env.example              # Environment config template
 ├── setup.sh                  # End-to-end provisioning (role selection, onboard)
 ├── cleanup.sh                # Full teardown
@@ -144,9 +144,9 @@ Managed via `config/claude-settings.json` and `bin/run-claude.sh` flags.
 
 | Service | Container | Image | Resources | Networks |
 |---------|-----------|-------|-----------|----------|
-| `openclaw` | `zupee-claw` | Built from `docker/Dockerfile` | Dynamic (CLAW_MEM, CLAW_CPUS) | isolated, host-access, squid-internal, web-access |
-| `ollama` (docker mode only) | `zupee-ollama` | `ollama/ollama:0.20.3` | Dynamic (OLLAMA_MEM, OLLAMA_CPUS) | isolated |
-| `squid` | `zupee-squid` | `ubuntu/squid:latest` | 256M, 0.5 CPU | squid-internal, squid-egress |
+| `openclaw` | `rcao-claw` | Built from `docker/Dockerfile` | Dynamic (CLAW_MEM, CLAW_CPUS) | isolated, host-access, squid-internal, web-access |
+| `ollama` (docker mode only) | `rcao-ollama` | `ollama/ollama:0.20.3` | Dynamic (OLLAMA_MEM, OLLAMA_CPUS) | isolated |
+| `squid` | `rcao-squid` | `ubuntu/squid:latest` | 256M, 0.5 CPU | squid-internal, squid-egress |
 
 Volume mounts:
 - `~/.openclaw` → `/home/openclaw/.openclaw:rw` (runtime, managed by OpenClaw)

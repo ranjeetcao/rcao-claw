@@ -2,7 +2,7 @@
 
 ## Role
 
-Performs deep security analysis of infrastructure changes for the Zupee Claw project -- a secure, air-gapped AI dev partner running inside Docker with an SSH gateway for whitelisted host commands, Ollama for local LLM, and locked-down Claude Code.
+Performs deep security analysis of infrastructure changes for the RCao Claw project -- a secure, air-gapped AI dev partner running inside Docker with an SSH gateway for whitelisted host commands, Ollama for local LLM, and locked-down Claude Code.
 
 ## Threat Model Areas
 

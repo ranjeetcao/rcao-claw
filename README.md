@@ -1,15 +1,15 @@
-# Zupee Claw
+# RCao Claw
 
 <!-- Uncomment when CI is enabled
-[![Lint](https://github.com/zupee-labs/zupee-claw/actions/workflows/lint.yml/badge.svg)](https://github.com/zupee-labs/zupee-claw/actions/workflows/lint.yml)
+[![Lint](https://github.com/ranjeetcao/rcao-claw/actions/workflows/lint.yml/badge.svg)](https://github.com/ranjeetcao/rcao-claw/actions/workflows/lint.yml)
 -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Secure, air-gapped AI development partner running inside Docker. Uses local LLM inference via Ollama and delegates coding tasks to Claude Code through a locked-down SSH gateway.
 
-## Why Zupee Claw?
+## Why RCao Claw?
 
-Running AI coding assistants on a work machine raises real concerns: unrestricted shell access, network calls to unknown endpoints, accidental data leaks. Zupee Claw solves this by:
+Running AI coding assistants on a work machine raises real concerns: unrestricted shell access, network calls to unknown endpoints, accidental data leaks. RCao Claw solves this by:
 
 - **Air-gapping the AI** inside a Docker container with no direct host access
 - **Whitelisting every command** the AI can run on the host via an SSH gateway
@@ -51,8 +51,8 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture, secu
 
 ```bash
 # 1. Clone
-git clone https://github.com/zupee-labs/zupee-claw.git
-cd zupee-claw
+git clone https://github.com/ranjeetcao/rcao-claw.git
+cd rcao-claw
 
 # 2. Configure environment
 cp .env.example .env
@@ -164,7 +164,7 @@ After running `setup.sh`, verify everything works:
 
 ```bash
 # 1. Check containers are running
-docker ps --format 'table {{.Names}}\t{{.Status}}' | grep zupee
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep rcao
 
 # 2. Validate Docker Compose config
 docker compose -f docker/docker-compose.yml config --quiet

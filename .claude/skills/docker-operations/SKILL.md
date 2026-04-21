@@ -1,6 +1,6 @@
 # Docker Operations
 
-Docker Compose topology and operations reference for the Zupee Claw stack.
+Docker Compose topology and operations reference for the RCao Claw stack.
 
 ## Stack Overview
 

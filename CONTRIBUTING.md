@@ -1,4 +1,4 @@
-# Contributing to Zupee Claw
+# Contributing to RCao Claw
 
 Thanks for your interest in contributing! This guide covers how to set up the project and submit changes.
 
@@ -6,8 +6,8 @@ Thanks for your interest in contributing! This guide covers how to set up the pr
 
 1. **Clone the repo:**
    ```bash
-   git clone https://github.com/zupee-labs/zupee-claw.git
-   cd zupee-claw
+   git clone https://github.com/ranjeetcao/rcao-claw.git
+   cd rcao-claw
    ```
 
 2. **Copy environment config:**

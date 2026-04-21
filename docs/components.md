@@ -1,6 +1,6 @@
 # Component Reference
 
-Detailed reference for every component in the Zupee Claw system. For the high-level architecture overview, see [architecture.md](architecture.md).
+Detailed reference for every component in the RCao Claw system. For the high-level architecture overview, see [architecture.md](architecture.md).
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Detailed reference for every component in the Zupee Claw system. For the high-le
 
 ### openclaw (Claw Gateway)
 
-**Container:** `zupee-claw`
+**Container:** `rcao-claw`
 **Image:** Built from `docker/Dockerfile` (base: `node:22-slim`)
 **Port:** `127.0.0.1:3000:3000`
 
@@ -58,7 +58,7 @@ The main gateway service. Hosts the Web UI, runs local LLM inference requests to
 
 ### ollama (LLM Inference)
 
-**Container:** `zupee-ollama`
+**Container:** `rcao-ollama`
 **Image:** `ollama/ollama:0.20.3` (pinned version)
 **Port:** None exposed (internal only)
 
@@ -75,7 +75,7 @@ Runs local LLM inference using the Qwen 3.5 model. Fully air-gapped -- no intern
 
 ### squid (HTTP Proxy)
 
-**Container:** `zupee-squid`
+**Container:** `rcao-squid`
 **Image:** `ubuntu/squid:latest`
 **Port:** Internal 3128 (not exposed by default; can be temporarily exposed on `127.0.0.1:3128` for debugging)
 

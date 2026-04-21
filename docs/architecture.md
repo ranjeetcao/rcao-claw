@@ -2,10 +2,10 @@
 
 ## Overview
 
-Zupee Claw is a secure, air-gapped AI development partner that runs inside Docker on a local machine. It combines local LLM inference via Ollama (Qwen 3.5) with delegated coding tasks through Claude Code, all connected via a locked-down SSH gateway. The system enforces 14 layers of defense-in-depth security to ensure the AI agent can only perform pre-approved actions on the host.
+RCao Claw is a secure, air-gapped AI development partner that runs inside Docker on a local machine. It combines local LLM inference via Ollama (Qwen 3.5) with delegated coding tasks through Claude Code, all connected via a locked-down SSH gateway. The system enforces 14 layers of defense-in-depth security to ensure the AI agent can only perform pre-approved actions on the host.
 
 **Key separation:**
-- `zupee-claw/` = Claw's home (configs, agent data, sessions, memory, scripts, Docker)
+- `rcao-claw/` = Claw's home (configs, agent data, sessions, memory, scripts, Docker)
 - `$WORKSPACE_DIR/` = actual development codebase (where Claude Code operates)
 
 **Core design principles:**
@@ -28,7 +28,7 @@ Zupee Claw is a secure, air-gapped AI development partner that runs inside Docke
 |  |                 v                                         |    |
 |  |  +-------------------+   isolated    +----------------+   |    |
 |  |  |   Claw Gateway    |<------------>|    Ollama       |   |    |
-|  |  |   (zupee-claw)    |  (internal)  |  (zupee-ollama) |   |    |
+|  |  |   (rcao-claw)    |  (internal)  |  (rcao-ollama) |   |    |
 |  |  |   Web UI :3000    |              |  Qwen 3.5 LLM   |   |    |
 |  |  +--------+----------+              +----------------+   |    |
 |  |           |       |                                       |    |
@@ -37,7 +37,7 @@ Zupee Claw is a secure, air-gapped AI development partner that runs inside Docke
 |  |           v        |                                      |    |
 |  |  +----------------+|                                      |    |
 |  |  |  Squid Proxy   ||                                      |    |
-|  |  | (zupee-squid)  ||                                      |    |
+|  |  | (rcao-squid)  ||                                      |    |
 |  |  |  ACL: Slack    ||                                      |    |
 |  |  |  only (.slack  ||                                      |    |
 |  |  |   .com:443)    ||                                      |    |
@@ -150,9 +150,9 @@ Four custom Docker bridge networks provide strict isolation:
 
 | Service | Container | Image | Resources | Networks | Health Check |
 |---------|-----------|-------|-----------|----------|-------------|
-| `openclaw` | `zupee-claw` | Built from `docker/Dockerfile` (node:22-slim) | `${CLAW_MEM:-1G}`, `${CLAW_CPUS:-1}` | isolated, host-access, squid-internal, web-access | `curl -sf http://localhost:3000/health` |
-| `ollama` | `zupee-ollama` | `ollama/ollama:0.20.3` | `${OLLAMA_MEM:-4G}`, `${OLLAMA_CPUS:-1.5}` | isolated | `ollama list` |
-| `squid` | `zupee-squid` | `ubuntu/squid:latest` | 256M, 0.5 CPU | squid-internal, squid-egress | TCP check on :3128 |
+| `openclaw` | `rcao-claw` | Built from `docker/Dockerfile` (node:22-slim) | `${CLAW_MEM:-1G}`, `${CLAW_CPUS:-1}` | isolated, host-access, squid-internal, web-access | `curl -sf http://localhost:3000/health` |
+| `ollama` | `rcao-ollama` | `ollama/ollama:0.20.3` | `${OLLAMA_MEM:-4G}`, `${OLLAMA_CPUS:-1.5}` | isolated | `ollama list` |
+| `squid` | `rcao-squid` | `ubuntu/squid:latest` | 256M, 0.5 CPU | squid-internal, squid-egress | TCP check on :3128 |
 
 **Startup order:** Ollama and Squid start first; Openclaw waits for both to report healthy.
 
@@ -176,7 +176,7 @@ Four custom Docker bridge networks provide strict isolation:
 ## Directory Structure
 
 ```
-zupee-claw/
+rcao-claw/
 ├── .env.example                        # Environment config template
 ├── .env                                # Local config (gitignored)
 ├── setup.sh                            # End-to-end provisioning (7 phases)
