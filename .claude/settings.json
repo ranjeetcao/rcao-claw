@@ -19,5 +19,12 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "Bash(ollama list *)",
+      "Bash(ollama ps *)"
+    ]
   }
 }
