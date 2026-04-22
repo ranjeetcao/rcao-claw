@@ -2,10 +2,11 @@
 
 ## Overview
 
-RCao Claw is a secure, air-gapped AI development partner that runs inside Docker on a local machine. It combines local LLM inference via Ollama (Qwen 3.5) with delegated coding tasks through Claude Code, all connected via a locked-down SSH gateway. The system enforces 14 layers of defense-in-depth security to ensure the AI agent can only perform pre-approved actions on the host.
+RCao Claw is a secure, air-gapped AI development partner. The Claw gateway runs inside Docker; Ollama runs either natively on the host (macOS, for Metal GPU acceleration) or as a sibling Docker container (Linux/CI). Local inference is combined with delegated coding tasks through Claude Code, all connected via a locked-down SSH gateway. The system enforces 14 layers of defense-in-depth security to ensure the AI agent can only perform pre-approved actions on the host.
 
 **Key separation:**
-- `rcao-claw/` = Claw's home (configs, agent data, sessions, memory, scripts, Docker)
+- `rcao-claw/` = repo contents (scripts, configs, Docker, personality)
+- `~/.openclaw/` = per-machine runtime state (managed by OpenClaw, not in repo)
 - `$WORKSPACE/` = actual development codebase (where Claude Code operates)
 
 **Core design principles:**
@@ -18,56 +19,61 @@ RCao Claw is a secure, air-gapped AI development partner that runs inside Docker
 ## System Architecture Diagram
 
 ```
-+------------------------------------------------------------------+
-|  HOST MACHINE                                                     |
-|                                                                   |
-|  Browser --> http://localhost:3000                                 |
-|                    |                                               |
-|  +-----------------|-----------------------------------------+    |
-|  |  DOCKER         |                                         |    |
-|  |                 v                                         |    |
-|  |  +-------------------+   isolated    +----------------+   |    |
-|  |  |   Claw Gateway    |<------------>|    Ollama       |   |    |
-|  |  |   (rcao-claw)    |  (internal)  |  (rcao-ollama) |   |    |
-|  |  |   Web UI :3000    |              |  Qwen 3.5 LLM   |   |    |
-|  |  +--------+----------+              +----------------+   |    |
-|  |           |       |                                       |    |
-|  |    squid-internal  |  host-access                         |    |
-|  |           |        |  (internal)                          |    |
-|  |           v        |                                      |    |
-|  |  +----------------+|                                      |    |
-|  |  |  Squid Proxy   ||                                      |    |
-|  |  | (rcao-squid)  ||                                      |    |
-|  |  |  ACL: Slack    ||                                      |    |
-|  |  |  only (.slack  ||                                      |    |
-|  |  |   .com:443)    ||                                      |    |
-|  |  +-------+--------+|                                      |    |
-|  |          |          |                                      |    |
-|  |   squid-egress      |                                     |    |
-|  |   (internet)        |                                     |    |
-|  |          |          |                                      |    |
-|  +----------|----------|-------------------------------------+    |
-|             |          |                                          |
-|             v          | SSH (host.docker.internal:22)            |
-|        Slack API       | ForceCommand = ssh-gateway.sh            |
-|        (*.slack.com)   |                                          |
-|                        v                                          |
-|  +----------------------------------------------------------+    |
-|  |  openclaw-bot user (restricted shell, no sudo)            |    |
-|  |                                                           |    |
-|  |  ssh-gateway.sh --> allowed-commands.conf                 |    |
-|  |    |                                                      |    |
-|  |    +-- service-status.sh   (check health)                 |    |
-|  |    +-- git-status.sh       (git status on repo)           |    |
-|  |    +-- git-pull.sh         (git pull --rebase)            |    |
-|  |    +-- run-tests.sh        (npm test on repo)             |    |
-|  |    +-- run-claude.sh       (locked-down Claude Code)      |    |
-|  |          |                                                |    |
-|  |          v                                                |    |
-|  |        Claude Code (25 turns, $10 cap)                    |    |
-|  |          operates on: $WORKSPACE                |    |
-|  +----------------------------------------------------------+    |
-+------------------------------------------------------------------+
++---------------------------------------------------------------------+
+|  HOST MACHINE                                                        |
+|                                                                      |
+|  Browser --> http://127.0.0.1:3000                                   |
+|                    |                                                 |
+|  +-----------------|----------------------------------------------+  |
+|  |  DOCKER         |                                              |  |
+|  |                 v                                              |  |
+|  |  +-------------------+     isolated                            |  |
+|  |  |   Claw Gateway    |<----(internal, no internet)----+        |  |
+|  |  |   (rcao-claw)     |                                |        |  |
+|  |  |   Web UI :3000    |  docker mode only:             |        |  |
+|  |  |   non-root 1001   |  +---------------------+       |        |  |
+|  |  +--+--------+-------+  |     Ollama          |<------+        |  |
+|  |     |        |          |   (rcao-ollama)     |                |  |
+|  |     |        |          |   profile:          |                |  |
+|  |     |        |          |   docker-ollama     |                |  |
+|  |     |        |          +---------------------+                |  |
+|  |     |        |                                                  |  |
+|  |     |  host-access (internal)                                   |  |
+|  |     |        |                                                  |  |
+|  |     |  squid-internal (internal, no internet)                   |  |
+|  |     v        |                                                  |  |
+|  |  +---------+ +---------+  +---------+                           |  |
+|  |  | Squid   |-| SearXNG |--| Valkey  |                           |  |
+|  |  | Proxy   | | (search)|  | (cache) |                           |  |
+|  |  | ACL     | +---------+  +---------+                           |  |
+|  |  +----+----+                                                    |  |
+|  |       |                                                         |  |
+|  |   squid-egress (outbound)                                       |  |
+|  +-------|-----------------|---------------------------------------+  |
+|          |                 |                                          |
+|          v                 | native mode (macOS default):             |
+|    Internet (Slack         |   host.docker.internal:11434 --> Ollama  |
+|    + whitelisted           |   (runs on host, Metal GPU)              |
+|    search engines)         |                                          |
+|                            | SSH to host (host.docker.internal:22)    |
+|                            | ForceCommand = ssh-gateway.sh            |
+|                            v                                          |
+|  +----------------------------------------------------------------+  |
+|  |  openclaw-bot user (rbash restricted shell, no sudo)            |  |
+|  |                                                                 |  |
+|  |  ssh-gateway.sh --> allowed-commands.conf (5 entries)           |  |
+|  |    |                                                            |  |
+|  |    +-- service-status.sh  (host health + available repos)       |  |
+|  |    +-- git-status.sh      (git status on repo)                  |  |
+|  |    +-- git-pull.sh        (git pull --rebase)                   |  |
+|  |    +-- run-tests.sh       (npm test on repo)                    |  |
+|  |    +-- run-claude.sh      (locked-down Claude Code)             |  |
+|  |          |                                                      |  |
+|  |          v                                                      |  |
+|  |        Claude Code (25 turns, $10 cap)                          |  |
+|  |          operates on: $WORKSPACE                                |  |
+|  +----------------------------------------------------------------+  |
++---------------------------------------------------------------------+
 ```
 
 ## Data Flow
@@ -81,7 +87,9 @@ User (browser)
 localhost:3000 (Claw Web UI, bound to 127.0.0.1 only)
   |
   v
-Claw Gateway (Docker) --inference--> Ollama LLM (Docker, isolated network)
+Claw Gateway (Docker) --inference--> Ollama LLM
+                                      native mode: host.docker.internal:11434 (host, Metal GPU)
+                                      docker mode: ollama:11434 on `isolated` network
   |
   | (when host action is needed)
   v
@@ -94,26 +102,35 @@ SSH --> ssh-gateway.sh --> allowed-commands.conf
   +-- run-claude.sh        -> Claude Code (locked down)
         |
         v
-      claude -p "..." --permission-mode dontAsk \
-        --allowedTools ... --disallowedTools ... \
+      claude -p "..." \
+        --settings <generated claude-run-settings.json> \
+        --append-system-prompt <personality: IDENTITY + SOUL + AGENTS> \
+        --permission-mode dontAsk \
         --max-turns 25 --max-budget-usd 10.00
         |
         v
       $WORKSPACE  (Read, Edit, Write, git, npm test)
 ```
 
-### Slack Communication Flow
+### Egress Flow (Slack + SearXNG web search)
 
 ```
-Claw Gateway (Socket Mode WebSocket)
+Claw Gateway (Socket Mode WebSocket, SearXNG HTTP)
   |
-  | HTTPS_PROXY=http://squid:3128
+  | HTTPS_PROXY=http://squid:3128 (CONNECT over port 443 only)
   v
-Squid Proxy (ACL: *.slack.com, *.slack-edge.com, port 443 only)
+Squid Proxy ACL allowlist:
+  - Slack: *.slack.com, *.slack-edge.com
+  - Search/dev: *.google.com, *.googleapis.com, duckduckgo.com, *.bing.com,
+                api.github.com, *.stackoverflow.com, *.stackexchange.com,
+                arxiv.org, *.wikipedia.org, registry.npmjs.org, pypi.org,
+                hub.docker.com
   |
   v (squid-egress network, internet access)
-Slack API (REST + WebSocket)
+Destination (any other domain is blocked)
 ```
+
+All requests are HTTPS (CONNECT tunnel on port 443). Plain HTTP is denied. Unmatched domains return `403 Forbidden`.
 
 ### Model Download Flow (one-time, during setup)
 
@@ -153,29 +170,33 @@ Five custom Docker bridge networks provide strict isolation:
 |---------|-----------|-------|-----------|----------|-------------|
 | `openclaw` | `rcao-claw` | Built from `docker/Dockerfile` (node:22-slim) | `${CLAW_MEM:-1G}`, `${CLAW_CPUS:-1}` | isolated, host-access, squid-internal, web-access | `curl -sf http://localhost:3000/health` |
 | `ollama` | `rcao-ollama` | `ollama/ollama:0.20.3` (profile `docker-ollama`) | `${OLLAMA_MEM:-4G}`, `${OLLAMA_CPUS:-1.5}` | isolated | `ollama list` |
-| `searxng` | `rcao-searxng` | `searxng/searxng:2026.3.28-cf5389afd` | 512M, 0.5 CPU | squid-internal | `curl -sf http://localhost:8080/healthz` |
+| `searxng` | `rcao-searxng` | `searxng/searxng:2026.3.28-cf5389afd` | 512M, 0.5 CPU | squid-internal | `python -c "urllib.request.urlopen('http://localhost:8080/')"` |
 | `valkey` | `rcao-valkey` | `valkey/valkey:8-alpine` | 128M, 0.25 CPU | squid-internal | `valkey-cli ping` |
 | `squid` | `rcao-squid` | `ubuntu/squid:latest` | 256M, 0.5 CPU | squid-internal, squid-egress | TCP check on :3128 |
 
 **Startup order:** Squid starts first; Valkey → SearXNG → Openclaw then come up in dependency order. Ollama (docker mode) runs in parallel. Openclaw waits for Squid + SearXNG to report healthy before starting.
 
-**Resource allocation** (openclaw + ollama calculated by `setup.sh`):
-- Ollama: 50% CPUs, 50% RAM (LLM inference is memory-hungry)
-- Claw: 25% CPUs, 20% RAM
+**Resource allocation** (calculated by `setup.sh` at provisioning time):
+- Ollama (docker mode only): 50% CPUs, sized from `OLLAMA_MODEL_MEM` (model memory requirement + overhead)
+- Claw: 25% CPUs, fixed 512M baseline (enough for the gateway; most memory goes to Ollama)
 - Squid + SearXNG + Valkey: fixed low allocations (see table)
 - Reserved: remainder for host OS
+- All values are written to `.env` and can be overridden before running `setup.sh`
 
 ## Volume Mounts
 
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
-| `openclaw-home/` | `/home/openclaw/.openclaw` | `rw` | Agent config, runtime data, memory, sessions |
+| `${OPENCLAW_HOME:-~/.openclaw}` | `/home/openclaw/.openclaw` | `rw` | Agent config, runtime data, memory, sessions (created by `setup.sh`, **not in repo**) |
+| `${WORKSPACE:-~/workspace}` | `/workspace` | `rw` | Developer workspace — the agent reads/writes code here directly |
 | `bin/` | `/openclaw/bin` | `ro` | Whitelisted gateway scripts (immutable) |
 | `config/openclaw-docker-key` | `/openclaw/.ssh/id_ed25519` | `ro` | SSH private key for host access |
+| `config/squid.conf` | `/etc/squid/squid.conf` | `ro` | Squid proxy ACL configuration |
+| `config/searxng-settings.yml` | `/etc/searxng/settings.yml` | `ro` | SearXNG engine configuration |
+| `config/searxng-limiter.toml` | `/etc/searxng/limiter.toml` | `ro` | SearXNG rate-limiter rules |
 | `logs/` | `/openclaw/logs` | `rw` | Audit trail (gateway, claude, openclaw logs) |
-| `docker/squid.conf` | `/etc/squid/squid.conf` | `ro` | Squid proxy configuration |
 | `logs/squid/` | `/var/log/squid` | `rw` | Squid access and cache logs |
-| `ollama-models` (named) | `/root/.ollama` | `rw` | Persistent LLM model storage |
+| `ollama-models` (named volume) | `/root/.ollama` | `rw` | Persistent LLM model storage (docker mode only) |
 
 ## Directory Structure
 
@@ -183,70 +204,100 @@ Five custom Docker bridge networks provide strict isolation:
 rcao-claw/
 ├── .env.example                        # Environment config template
 ├── .env                                # Local config (gitignored)
-├── setup.sh                            # End-to-end provisioning (7 phases)
+├── setup.sh                            # End-to-end provisioning (pre-flight, role, SSH, Docker, verify)
 ├── cleanup.sh                          # Full teardown with confirmations
 ├── CLAUDE.md                           # Claude Code project guide
 ├── README.md                           # Quickstart and usage
 ├── CONTRIBUTING.md                     # Development and PR guidelines
 ├── CODE_OF_CONDUCT.md                  # Contributor Covenant v2.1
+├── SECURITY.md                         # Vulnerability reporting policy
+├── LICENSE                             # MIT
 │
-├── bin/                                # Whitelisted scripts (mounted :ro)
-│   ├── allowed-commands.conf           # Command allowlist (literal match)
+├── bin/                                # Whitelisted scripts (mounted :ro into container)
+│   ├── allowed-commands.conf           # Command allowlist (literal match — 5 commands)
 │   ├── ssh-gateway.sh                  # SSH ForceCommand entry point
-│   ├── workspace-env.sh                # Shared workspace/env resolver
+│   ├── workspace-env.sh                # Shared workspace/env resolver (sourced)
 │   ├── run-claude.sh                   # Claude Code launcher (locked down)
 │   ├── git-status.sh                   # git status on workspace repo
 │   ├── git-pull.sh                     # git pull --rebase on current branch
 │   ├── run-tests.sh                    # npm test with optional args
-│   └── service-status.sh              # System health + available repos
+│   ├── service-status.sh               # System health + available repos
+│   └── test-search.sh                  # SearXNG debug helper (NOT in allowlist)
 │
 ├── config/
-│   ├── claude-settings.json            # Claude Code deny rules (persistent)
-│   ├── sshd_openclaw.conf              # SSH daemon hardening (Match User)
-│   ├── openclaw-docker-key             # Ed25519 private key (generated)
-│   ├── openclaw-docker-key.pub         # Ed25519 public key (generated)
-│   └── authorized_keys                 # ForceCommand-restricted key template
+│   ├── claude-settings.json            # Persistent Claude Code deny rules (co-source-of-truth)
+│   ├── sshd_openclaw.conf              # SSH daemon hardening template (Match User)
+│   ├── squid.conf                      # Squid proxy ACL (Slack + whitelisted search domains)
+│   ├── searxng-settings.yml            # SearXNG engine configuration
+│   ├── searxng-limiter.toml            # SearXNG rate-limiter rules
+│   ├── slack-app-manifest.json         # Slack app template (each dev customizes)
+│   ├── openclaw-docker-key(.pub)       # Ed25519 keypair (generated by setup.sh, gitignored)
+│   └── authorized_keys                 # ForceCommand-restricted key (auto-generated)
 │
-├── openclaw-home/                      # Maps to ~/.openclaw inside container
-│   ├── openclaw.json                   # Gateway config (mode, port, models)
-│   ├── agents/main/sessions/           # Session transcripts (JSONL)
-│   ├── credentials/                    # OAuth tokens, API keys (host-protected)
-│   ├── skills/                         # Shared managed skills
-│   └── workspace/                      # Agent personality & memory
-│       ├── AGENTS.md                   # Operating instructions & workflow
-│       ├── SOUL.md                     # Persona, tone, personality
-│       ├── USER.md                     # User profile & preferences
-│       ├── IDENTITY.md                 # Agent name & identity
-│       ├── TOOLS.md                    # Available tools reference
-│       ├── MEMORY.md                   # Long-term memory index (runtime)
-│       ├── memory/                     # Daily memory logs (runtime)
-│       └── skills/                     # Workspace-specific skills
+├── personality/                        # Role-based agent personalities (version-controlled)
+│   ├── shared/                         # Files common to all roles
+│   │   ├── IDENTITY.md                 # Agent name & identity
+│   │   └── TOOLS.md                    # Available tools reference
+│   ├── developer/                      # Developer role
+│   │   ├── SOUL.md                     # Persona, tone, personality traits
+│   │   ├── AGENTS.md                   # Operating instructions & workflow
+│   │   └── USER.md                     # User profile & preferences
+│   ├── qa/                             # QA role (same structure)
+│   └── marketing/                      # Marketing role (same structure)
 │
 ├── docker/
-│   ├── Dockerfile                      # node:22-slim + openssh-client + curl
+│   ├── Dockerfile                      # node:22-slim + openssh-client (non-root UID 1001)
 │   ├── docker-compose.yml              # 5 services, 5 networks
-│   ├── entrypoint.sh                   # SSH setup, readiness wait, gateway start
-│   └── squid.conf                      # Squid ACL (Slack domains only)
+│   └── entrypoint.sh                   # SSH setup, readiness wait, gateway start
 │
 ├── docs/
 │   ├── architecture.md                 # This file
 │   ├── components.md                   # Detailed component reference
 │   ├── security-model.md               # Security layers & threat model
 │   ├── setup-and-operations.md         # Installation & operations guide
-│   └── slack-integration.md            # Slack Socket Mode setup
+│   ├── slack-integration.md            # Slack Socket Mode setup
+│   └── testing-runbook.md              # Manual & automated test procedures
+│
+├── tests/                              # Test and benchmark scripts (run from host)
+│   ├── benchmark-models.sh             # Model performance benchmarks
+│   ├── quality-tests.sh                # Model quality test suite
+│   ├── destructive-test.sh             # Full teardown + re-provision test
+│   └── test-search.sh                  # SearXNG ACL + Squid egress test
 │
 ├── .github/
 │   ├── workflows/lint.yml              # CI: ShellCheck, YAML lint, JSON validation
 │   ├── ISSUE_TEMPLATE/
 │   │   ├── bug_report.md               # Bug report template
 │   │   └── feature_request.md          # Feature request template
-│   └── PULL_REQUEST_TEMPLATE.md        # PR template with testing checklist
+│   ├── PULL_REQUEST_TEMPLATE.md        # PR template with testing checklist
+│   └── CODEOWNERS                      # Security-critical path reviewers
+│
+├── .claude/
+│   ├── rules/                          # Codebase rules enforced during Claude sessions
+│   └── hooks/                          # Pre-commit hooks (secrets scan, shellcheck)
 │
 └── logs/                               # Audit logs (gitignored, mounted :rw)
     ├── gateway.log                     # SSH command log (all allowed/denied)
     ├── claude.log                      # Claude Code execution log
     ├── openclaw.log                    # Gateway runtime log
     └── squid/                          # Squid proxy access/cache logs
+```
+
+### Runtime state (NOT in repo)
+
+`setup.sh` creates `~/.openclaw/` on each machine. It is managed by OpenClaw at runtime, mounted into the container as `/home/openclaw/.openclaw:rw`, and should never be committed:
+
+```
+~/.openclaw/                            # Per-machine runtime state
+├── openclaw.json                       # Gateway config (mode, port, models, auth token)
+├── agents/main/sessions/               # Session transcripts (JSONL)
+├── credentials/                        # OAuth tokens, API keys (host-protected)
+├── skills/                             # Shared managed skills
+└── workspace/                          # Active personality (copied from personality/<role>/ at setup)
+    ├── IDENTITY.md · TOOLS.md          # From personality/shared/
+    ├── SOUL.md · AGENTS.md · USER.md   # From personality/<role>/
+    ├── MEMORY.md · memory/             # Long-term memory (written at runtime)
+    └── skills/                         # Workspace-specific skills
 ```
 
 ## Agent Workspace Files
@@ -264,7 +315,7 @@ These files define the agent's personality, instructions, and runtime state. The
 | `memory/*.md` | Daily memory logs | Container (UID 1001) | Yes |
 | `openclaw.json` | Gateway config (mode, models, auth token) | Container (UID 1001) | Yes |
 
-**Immutability guarantee:** Personality files (SOUL, AGENTS, USER, IDENTITY, TOOLS) are owned by the host user and set to `chmod 444` by the entrypoint script. The container cannot modify them.
+**Immutability guarantee:** Personality files (SOUL, AGENTS, USER, IDENTITY, TOOLS) live in the version-controlled `personality/` tree. `setup.sh` copies the selected role into `~/.openclaw/workspace/`, and the container entrypoint sets them to `chmod 444` so the agent cannot rewrite its own rules at runtime. Updates flow one way: edit `personality/<role>/*.md` in the repo, then re-run `setup.sh` to refresh the runtime copy.
 
 ## Configuration
 
@@ -272,20 +323,24 @@ All user configuration is managed through `.env`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENCLAW_VERSION` | `2026.4.2` | Pinned Claw gateway version |
+| `OPENCLAW_VERSION` | `2026.4.12` | Pinned OpenClaw gateway package version |
 | `WORKSPACE` | `~/workspace/my-project` | Target repo directory (Claude Code operates here) |
+| `OLLAMA_MODE` | `auto` | `native` (macOS Metal GPU), `docker` (Linux/CI), or `auto` (detect by OS) |
 | `OLLAMA_MODEL` | `qwen3.5:9b` | Ollama model for local inference |
-| `SLACK_BOT_TOKEN` | (unset) | Bot User OAuth Token for Slack (`xoxb-...`) |
+| `OLLAMA_MODEL_MEM` | `10` | Model memory requirement in GiB (used to size Ollama container + preflight) |
+| `SEARXNG_SECRET` | (auto-generated) | SearXNG session secret; `setup.sh` generates one if unset |
 | `SLACK_APP_TOKEN` | (unset) | App-Level Token for Socket Mode (`xapp-...`) |
+| `SLACK_USER_TOKEN` | (unset) | User OAuth Token (`xoxp-...`) — preferred: messages appear from the developer |
+| `SLACK_BOT_TOKEN` | (unset) | Bot User OAuth Token (`xoxb-...`) — legacy bot mode |
 
-Resource limits are auto-calculated by `setup.sh` based on system hardware and can be overridden:
+Resource limits are auto-calculated by `setup.sh` based on system hardware and can be overridden by editing `.env`:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OLLAMA_MEM` | 50% system RAM | Ollama memory limit |
-| `OLLAMA_CPUS` | 50% system CPUs | Ollama CPU limit |
-| `CLAW_MEM` | 20% system RAM | Claw gateway memory limit |
+| Variable | setup.sh value | Description |
+|----------|----------------|-------------|
+| `OLLAMA_CPUS` | 50% system CPUs (docker mode) | Ollama CPU limit |
+| `OLLAMA_MEM` | Sized from `OLLAMA_MODEL_MEM` + overhead (docker mode) | Ollama memory limit |
 | `CLAW_CPUS` | 25% system CPUs | Claw gateway CPU limit |
+| `CLAW_MEM` | 512M baseline (fixed, not a percentage) | Claw gateway memory limit |
 
 ## Host Commands (via SSH Gateway)
 
@@ -320,10 +375,10 @@ The system implements 14 layers of defense-in-depth security. See [security-mode
 | 5 | Input validation (metacharacters, traversal) | Injection attacks |
 | 6 | Rate limiting (30/min) | Brute force / abuse |
 | 7 | Claude `--permission-mode dontAsk` | Unapproved tool usage |
-| 8 | Claude `--disallowedTools` blacklist | Dangerous tools (ssh, curl, sudo, etc.) |
+| 8 | Inline `deny` rules in generated `claude-run-settings.json` (passed via `--settings`) | Dangerous tools (ssh, curl, sudo, rm -rf, node -e, npx, etc.) |
 | 9 | Claude `--max-turns 25` | Runaway agent loops |
 | 10 | Claude `--max-budget-usd 10` | API cost overruns |
-| 11 | `.claude/settings.json` deny rules | Flag bypass attempts |
+| 11 | Persistent `config/claude-settings.json` (mounted `:ro`) | Tampering with the deny rule source-of-truth |
 | 12 | Restricted shell (`rbash`/`false`) | Shell escapes |
 | 13 | Read-only volume mounts | Script/config tampering |
 | 14 | Squid ACL proxy | Unauthorized internet access |
@@ -380,5 +435,6 @@ tail -f logs/claude.log
 - [ ] All actions logged to `logs/` with ISO timestamps
 - [ ] Container restart preserves agent data (volumes)
 - [ ] Web UI not accessible from other machines (127.0.0.1 bind)
-- [ ] Squid only allows `*.slack.com` and `*.slack-edge.com`
+- [ ] Squid only allows the ACL-whitelisted domains (Slack + search/dev sources in `config/squid.conf`)
+- [ ] Squid rejects any other domain with `403 Forbidden`
 - [ ] Ollama has zero internet access
