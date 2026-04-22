@@ -2,11 +2,11 @@
 
 ## Overview
 
-Zupee Claw is a secure, air-gapped AI development partner that runs inside Docker on a local machine. It combines local LLM inference via Ollama (Qwen 3.5) with delegated coding tasks through Claude Code, all connected via a locked-down SSH gateway. The system enforces 14 layers of defense-in-depth security to ensure the AI agent can only perform pre-approved actions on the host.
+RCao Claw is a secure, air-gapped AI development partner that runs inside Docker on a local machine. It combines local LLM inference via Ollama (Qwen 3.5) with delegated coding tasks through Claude Code, all connected via a locked-down SSH gateway. The system enforces 14 layers of defense-in-depth security to ensure the AI agent can only perform pre-approved actions on the host.
 
 **Key separation:**
-- `zupee-claw/` = Claw's home (configs, agent data, sessions, memory, scripts, Docker)
-- `$WORKSPACE_DIR/` = actual development codebase (where Claude Code operates)
+- `rcao-claw/` = Claw's home (configs, agent data, sessions, memory, scripts, Docker)
+- `$WORKSPACE/` = actual development codebase (where Claude Code operates)
 
 **Core design principles:**
 - **Air-gapped inference** -- Ollama runs on an internal Docker network with zero internet access
@@ -28,7 +28,7 @@ Zupee Claw is a secure, air-gapped AI development partner that runs inside Docke
 |  |                 v                                         |    |
 |  |  +-------------------+   isolated    +----------------+   |    |
 |  |  |   Claw Gateway    |<------------>|    Ollama       |   |    |
-|  |  |   (zupee-claw)    |  (internal)  |  (zupee-ollama) |   |    |
+|  |  |   (rcao-claw)    |  (internal)  |  (rcao-ollama) |   |    |
 |  |  |   Web UI :3000    |              |  Qwen 3.5 LLM   |   |    |
 |  |  +--------+----------+              +----------------+   |    |
 |  |           |       |                                       |    |
@@ -37,7 +37,7 @@ Zupee Claw is a secure, air-gapped AI development partner that runs inside Docke
 |  |           v        |                                      |    |
 |  |  +----------------+|                                      |    |
 |  |  |  Squid Proxy   ||                                      |    |
-|  |  | (zupee-squid)  ||                                      |    |
+|  |  | (rcao-squid)  ||                                      |    |
 |  |  |  ACL: Slack    ||                                      |    |
 |  |  |  only (.slack  ||                                      |    |
 |  |  |   .com:443)    ||                                      |    |
@@ -65,7 +65,7 @@ Zupee Claw is a secure, air-gapped AI development partner that runs inside Docke
 |  |          |                                                |    |
 |  |          v                                                |    |
 |  |        Claude Code (25 turns, $10 cap)                    |    |
-|  |          operates on: $WORKSPACE_DIR/$REPO                |    |
+|  |          operates on: $WORKSPACE                |    |
 |  +----------------------------------------------------------+    |
 +------------------------------------------------------------------+
 ```
@@ -88,7 +88,7 @@ Claw Gateway (Docker) --inference--> Ollama LLM (Docker, isolated network)
 SSH --> ssh-gateway.sh --> allowed-commands.conf
   |
   +-- service-status.sh    -> system health, available repos, disk usage
-  +-- git-status.sh        -> git status on $WORKSPACE_DIR/$REPO
+  +-- git-status.sh        -> git status on $WORKSPACE
   +-- git-pull.sh          -> git pull --rebase on current branch
   +-- run-tests.sh         -> npm test (with optional args after --)
   +-- run-claude.sh        -> Claude Code (locked down)
@@ -99,7 +99,7 @@ SSH --> ssh-gateway.sh --> allowed-commands.conf
         --max-turns 25 --max-budget-usd 10.00
         |
         v
-      $WORKSPACE_DIR/$REPO  (Read, Edit, Write, git, npm test)
+      $WORKSPACE  (Read, Edit, Write, git, npm test)
 ```
 
 ### Slack Communication Flow
@@ -130,19 +130,20 @@ setup.sh disconnects Ollama from squid-egress
 
 ## Network Architecture
 
-Four custom Docker bridge networks provide strict isolation:
+Five custom Docker bridge networks provide strict isolation:
 
 | Network | `internal` | Services | Purpose |
 |---------|-----------|----------|---------|
 | `isolated` | `true` | ollama, openclaw | LLM inference traffic only. No internet. |
 | `host-access` | `true` | openclaw | SSH from container to host via `host.docker.internal`. No internet. |
-| `squid-internal` | `true` | openclaw, squid | HTTP proxy traffic (openclaw -> squid). No internet. |
+| `squid-internal` | `true` | openclaw, searxng, valkey, squid | HTTP proxy traffic and SearXNG cache. No internet. |
 | `web-access` | `false` | openclaw | Web UI port publishing to `127.0.0.1:3000`. |
-| `squid-egress` | `false` | squid | Squid outbound to internet (Slack API only via ACL). |
+| `squid-egress` | `false` | squid | Squid outbound to internet (Slack + whitelisted search engines via ACL). |
 
 **Key isolation properties:**
 - Ollama has **zero internet access** -- it only joins `isolated`
-- Openclaw reaches the internet **only through Squid** (which only allows Slack domains)
+- Openclaw reaches the internet **only through Squid** (which only allows Slack + whitelisted search engine domains)
+- SearXNG and Valkey are fully internal (no internet); SearXNG only egresses through Squid
 - Host access is via SSH only, through a ForceCommand gateway
 - Web UI is bound to `127.0.0.1` -- not accessible from the local network
 
@@ -150,16 +151,19 @@ Four custom Docker bridge networks provide strict isolation:
 
 | Service | Container | Image | Resources | Networks | Health Check |
 |---------|-----------|-------|-----------|----------|-------------|
-| `openclaw` | `zupee-claw` | Built from `docker/Dockerfile` (node:22-slim) | `${CLAW_MEM:-1G}`, `${CLAW_CPUS:-1}` | isolated, host-access, squid-internal, web-access | `curl -sf http://localhost:3000/health` |
-| `ollama` | `zupee-ollama` | `ollama/ollama:0.20.3` | `${OLLAMA_MEM:-4G}`, `${OLLAMA_CPUS:-1.5}` | isolated | `ollama list` |
-| `squid` | `zupee-squid` | `ubuntu/squid:latest` | 256M, 0.5 CPU | squid-internal, squid-egress | TCP check on :3128 |
+| `openclaw` | `rcao-claw` | Built from `docker/Dockerfile` (node:22-slim) | `${CLAW_MEM:-1G}`, `${CLAW_CPUS:-1}` | isolated, host-access, squid-internal, web-access | `curl -sf http://localhost:3000/health` |
+| `ollama` | `rcao-ollama` | `ollama/ollama:0.20.3` (profile `docker-ollama`) | `${OLLAMA_MEM:-4G}`, `${OLLAMA_CPUS:-1.5}` | isolated | `ollama list` |
+| `searxng` | `rcao-searxng` | `searxng/searxng:2026.3.28-cf5389afd` | 512M, 0.5 CPU | squid-internal | `curl -sf http://localhost:8080/healthz` |
+| `valkey` | `rcao-valkey` | `valkey/valkey:8-alpine` | 128M, 0.25 CPU | squid-internal | `valkey-cli ping` |
+| `squid` | `rcao-squid` | `ubuntu/squid:latest` | 256M, 0.5 CPU | squid-internal, squid-egress | TCP check on :3128 |
 
-**Startup order:** Ollama and Squid start first; Openclaw waits for both to report healthy.
+**Startup order:** Squid starts first; Valkey → SearXNG → Openclaw then come up in dependency order. Ollama (docker mode) runs in parallel. Openclaw waits for Squid + SearXNG to report healthy before starting.
 
-**Resource allocation** (calculated by `setup.sh`):
+**Resource allocation** (openclaw + ollama calculated by `setup.sh`):
 - Ollama: 50% CPUs, 50% RAM (LLM inference is memory-hungry)
 - Claw: 25% CPUs, 20% RAM
-- Reserved: 30% for host OS and Squid proxy
+- Squid + SearXNG + Valkey: fixed low allocations (see table)
+- Reserved: remainder for host OS
 
 ## Volume Mounts
 
@@ -176,7 +180,7 @@ Four custom Docker bridge networks provide strict isolation:
 ## Directory Structure
 
 ```
-zupee-claw/
+rcao-claw/
 ├── .env.example                        # Environment config template
 ├── .env                                # Local config (gitignored)
 ├── setup.sh                            # End-to-end provisioning (7 phases)
@@ -220,7 +224,7 @@ zupee-claw/
 │
 ├── docker/
 │   ├── Dockerfile                      # node:22-slim + openssh-client + curl
-│   ├── docker-compose.yml              # 3 services, 5 networks
+│   ├── docker-compose.yml              # 5 services, 5 networks
 │   ├── entrypoint.sh                   # SSH setup, readiness wait, gateway start
 │   └── squid.conf                      # Squid ACL (Slack domains only)
 │
@@ -269,9 +273,8 @@ All user configuration is managed through `.env`:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENCLAW_VERSION` | `2026.4.2` | Pinned Claw gateway version |
-| `REPO` | `my-project` | Default repository name under `$WORKSPACE_DIR/` |
-| `WORKSPACE_DIR` | `~/workspace` | Root directory where dev repos live |
-| `OLLAMA_MODEL` | `gemma4:e2b` | Ollama model for local inference |
+| `WORKSPACE` | `~/workspace/my-project` | Target repo directory (Claude Code operates here) |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | Ollama model for local inference |
 | `SLACK_BOT_TOKEN` | (unset) | Bot User OAuth Token for Slack (`xoxb-...`) |
 | `SLACK_APP_TOKEN` | (unset) | App-Level Token for Socket Mode (`xapp-...`) |
 
@@ -294,7 +297,7 @@ Resource limits are auto-calculated by `setup.sh` based on system hardware and c
 | `run-tests [repo] [-- args]` | `bin/run-tests.sh` | Run npm test suite with optional arguments |
 | `run-claude <prompt> [repo]` | `bin/run-claude.sh` | Coding tasks via Claude Code (25 turns, $10 cap) |
 
-Default repo comes from `REPO` in `.env`. All commands accept optional `[repo]` override.
+Default workspace comes from `WORKSPACE` in `.env`. All commands accept an optional `[repo]` override (a name under the workspace parent, or a full path).
 
 **Adding a new command:**
 1. Create `bin/<name>.sh` with `set -euo pipefail` at the top
@@ -370,7 +373,7 @@ tail -f logs/claude.log
 - [ ] SSH gateway blocks path traversal attempts
 - [ ] SSH gateway blocks shell metacharacters
 - [ ] Rate limiting enforced at 30 commands/min
-- [ ] `run-claude.sh` operates on `$WORKSPACE_DIR` only
+- [ ] `run-claude.sh` operates on `$WORKSPACE` only
 - [ ] Claude Code cannot use ssh, curl, wget, sudo, docker
 - [ ] Claude Code cannot use `rm -rf`, `node -e`, `npx`
 - [ ] Claude Code cannot access WebFetch/WebSearch

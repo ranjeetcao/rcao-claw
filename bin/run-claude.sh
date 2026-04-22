@@ -157,7 +157,7 @@ fi
   $CLAW_SETTINGS \
   ${SYSTEM_PROMPT:+--append-system-prompt "$SYSTEM_PROMPT"} \
   --permission-mode dontAsk \
-  --max-turns 50 \
+  --max-turns 25 \
   --max-budget-usd 10.00 \
   2>&1 | tee -a "$LOGFILE"
 

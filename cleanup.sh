@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# Zupee Claw - End-to-End Cleanup
+# RCao Claw - End-to-End Cleanup
 # Tears down everything provisioned by setup.sh
 # =============================================================================
 
@@ -83,15 +83,15 @@ step()  { echo -e "\n${GREEN}=== $* ===${NC}"; }
 
 echo ""
 echo -e "${RED}========================================${NC}"
-echo -e "${RED}  Zupee Claw - Full Cleanup${NC}"
+echo -e "${RED}  RCao Claw - Full Cleanup${NC}"
 echo -e "${RED}========================================${NC}"
 echo ""
 echo "This will remove:"
 if [[ "$OLLAMA_MODE" == "native" ]]; then
-    echo "  - Docker containers (zupee-claw, zupee-squid)"
+    echo "  - Docker containers (rcao-claw, rcao-squid)"
     echo "  - Native Ollama process (if running)"
 else
-    echo "  - Docker containers (zupee-claw, zupee-ollama, zupee-squid)"
+    echo "  - Docker containers (rcao-claw, rcao-ollama, rcao-squid)"
 fi
 echo "  - Docker images and volumes"
 echo "  - SSH key, authorized_keys, sshd config"
@@ -142,7 +142,7 @@ else
 fi
 
 # Remove dangling images
-docker image prune -f --filter "label=com.docker.compose.project=zupee-claw" 2>/dev/null || true
+docker image prune -f --filter "label=com.docker.compose.project=rcao-claw" 2>/dev/null || true
 info "Docker cleanup done"
 
 # --- Remove SSH config -------------------------------------------------------

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# Zupee Claw - Model Quality Test Suite
+# RCao Claw - Model Quality Test Suite
 # Tests LLM models for real-world capability across developer & QA workflows.
 # Designed for 4B-9B parameter models running on 16-18GB RAM laptops.
 #
@@ -43,8 +43,8 @@ else
     OLLAMA_URL="http://ollama:11434"
 fi
 
-OLLAMA_CONTAINER="zupee-ollama"
-CLAW_CONTAINER="zupee-claw"
+OLLAMA_CONTAINER="rcao-ollama"
+CLAW_CONTAINER="rcao-claw"
 REQUEST_TIMEOUT=120
 
 CANDIDATE_MODELS=(
@@ -615,7 +615,7 @@ main() {
         # Default: read from .env
         local env_model
         env_model=$(grep '^OLLAMA_MODEL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
-        env_model="${env_model:-gemma4:e2b}"
+        env_model="${env_model:-qwen3.5:9b}"
         models=("$env_model")
     fi
 

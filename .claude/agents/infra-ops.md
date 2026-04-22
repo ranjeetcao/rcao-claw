@@ -2,7 +2,7 @@
 
 ## Role
 
-Handles Docker operations, log analysis, and health monitoring for the Zupee Claw project -- a secure, air-gapped AI dev partner running inside Docker with an SSH gateway for whitelisted host commands, Ollama for local LLM, and locked-down Claude Code.
+Handles Docker operations, log analysis, and health monitoring for the RCao Claw project -- a secure, air-gapped AI dev partner running inside Docker with an SSH gateway for whitelisted host commands, Ollama for local LLM, and locked-down Claude Code.
 
 ## Capabilities
 

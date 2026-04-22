@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for Zupee Claw
+about: Suggest an idea for RCao Claw
 title: "[Feature] "
 labels: enhancement
 assignees: ''

@@ -1,4 +1,4 @@
-name: zupee-claw
+name: rcao-claw
 
 services:
   # Ollama LLM inference — only used in Docker mode (OLLAMA_MODE=docker).
@@ -7,7 +7,7 @@ services:
   ollama:
     profiles: ["docker-ollama"]
     image: ollama/ollama:0.20.3
-    container_name: zupee-ollama
+    container_name: rcao-ollama
     volumes:
       - ollama-models:/root/.ollama
     deploy:
@@ -31,7 +31,7 @@ services:
       dockerfile: Dockerfile
       args:
         OPENCLAW_VERSION: ${OPENCLAW_VERSION}
-    container_name: zupee-claw
+    container_name: rcao-claw
     env_file:
       - ../.env
     ports:
@@ -104,7 +104,7 @@ services:
   # No API keys needed. Queries routed through Squid for audit + ACL control.
   searxng:
     image: searxng/searxng:2026.3.28-cf5389afd
-    container_name: zupee-searxng
+    container_name: rcao-searxng
     # GRANIAN_NO_MULTIPROCESS: workaround for Python 3.14 multiprocessing bug in granian
     environment:
       - SEARXNG_SECRET=${SEARXNG_SECRET}
@@ -141,7 +141,7 @@ services:
   # Valkey (Redis-compatible) — cache for SearXNG search results
   valkey:
     image: valkey/valkey:8-alpine
-    container_name: zupee-valkey
+    container_name: rcao-valkey
     networks:
       - squid-internal
     deploy:
@@ -159,7 +159,7 @@ services:
 
   squid:
     image: ubuntu/squid:latest
-    container_name: zupee-squid
+    container_name: rcao-squid
     volumes:
       - ../config/squid.conf:/etc/squid/squid.conf:ro
       - ../logs/squid:/var/log/squid:rw

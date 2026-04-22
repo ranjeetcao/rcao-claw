@@ -44,7 +44,7 @@ rm -f config/openclaw-docker-key config/openclaw-docker-key.pub
 
 # 3. Verify
 curl -sf http://localhost:3000/health    # Should return {"ok":true}
-docker ps | grep zupee                   # zupee-claw and zupee-squid running
+docker ps | grep rcao                   # rcao-claw and rcao-squid running
 ls ~/.openclaw/workspace/SOUL.md         # Personality files present
 ollama ps                                # Model loaded (native mode)
 ```
@@ -69,7 +69,7 @@ rm -rf ~/.openclaw/workspace
 # Should recreate workspace and copy personality files
 
 # Simulate: Docker containers died
-docker kill zupee-claw zupee-squid
+docker kill rcao-claw rcao-squid
 ./setup.sh --yes --role developer
 # Should restart containers
 
@@ -101,7 +101,7 @@ grep "developer" ~/.openclaw/workspace/SOUL.md  # Should find developer persona
 ./cleanup.sh --yes
 
 # Verify everything is gone
-docker ps | grep zupee       # No containers
+docker ps | grep rcao       # No containers
 ls ~/.openclaw 2>/dev/null   # Directory removed
 ls config/openclaw-docker-key 2>/dev/null  # SSH key removed
 
@@ -130,7 +130,7 @@ cd docker && docker compose build --no-cache && cd ..
 ./setup.sh --yes --role developer
 
 # Verify new image is used
-docker inspect zupee-claw --format='{{.Image}}' | head -1
+docker inspect rcao-claw --format='{{.Image}}' | head -1
 ```
 
 ### Test 8: Model Change
@@ -144,7 +144,7 @@ sed -i '' 's/OLLAMA_MODEL_MEM=.*/OLLAMA_MODEL_MEM=8/' .env
 ./setup.sh --yes --role developer
 
 # Verify
-docker exec zupee-claw cat /home/openclaw/.openclaw/openclaw.json | jq '.agents.defaults.model.primary'
+docker exec rcao-claw cat /home/openclaw/.openclaw/openclaw.json | jq '.agents.defaults.model.primary'
 # Should show "ollama/qwen3:8b"
 
 # Revert

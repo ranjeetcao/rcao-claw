@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# Zupee Claw - End-to-End Setup
+# RCao Claw - End-to-End Setup
 # Provisions everything needed to run Claw in Docker with SSH gateway
 # =============================================================================
 
@@ -412,8 +412,8 @@ if [[ "$(uname)" == "Darwin" ]]; then
 
     # Install LaunchAgent to auto-refresh the token every 30 minutes.
     # SSH sessions can't access Keychain, so this GUI-context agent keeps the cache fresh.
-    PLIST_SRC="$SCRIPT_DIR/config/com.zupee.claw.token-refresh.plist"
-    PLIST_DST="$HOME/Library/LaunchAgents/com.zupee.claw.token-refresh.plist"
+    PLIST_SRC="$SCRIPT_DIR/config/com.rcao.claw.token-refresh.plist"
+    PLIST_DST="$HOME/Library/LaunchAgents/com.rcao.claw.token-refresh.plist"
     if [[ -f "$PLIST_SRC" ]]; then
         mkdir -p "$HOME/Library/LaunchAgents"
         cp "$PLIST_SRC" "$PLIST_DST"
@@ -532,7 +532,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
             --skip-health; then
         info "OpenClaw configured with ollama/$OLLAMA_MODEL"
     else
-        warn "Onboarding returned non-zero — check with: docker exec zupee-claw openclaw doctor"
+        warn "Onboarding returned non-zero — check with: docker exec rcao-claw openclaw doctor"
     fi
 
     # Apply agent defaults (timeout for CPU inference, thinking level)
@@ -603,7 +603,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
             break
         fi
         if [[ $i -eq 90 ]]; then
-            warn "Gateway not healthy after 90s — check logs with: docker logs zupee-claw"
+            warn "Gateway not healthy after 90s — check logs with: docker logs rcao-claw"
         fi
         sleep 1
     done
@@ -614,7 +614,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
         GATEWAY_TOKEN=""
         info "Waiting for gateway to generate auth token..."
         for i in $(seq 1 30); do
-            GATEWAY_TOKEN=$(docker exec zupee-claw cat /home/openclaw/.openclaw/openclaw.json 2>/dev/null \
+            GATEWAY_TOKEN=$(docker exec rcao-claw cat /home/openclaw/.openclaw/openclaw.json 2>/dev/null \
                 | jq -r '.gateway.auth.token // empty' 2>/dev/null)
             if [[ -n "$GATEWAY_TOKEN" ]]; then
                 break
@@ -648,7 +648,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
             info "Waiting for browser to connect..."
             PAIRED=false
             for i in $(seq 1 120); do
-                DEVICES_JSON=$(docker exec zupee-claw openclaw devices list --json 2>/dev/null)
+                DEVICES_JSON=$(docker exec rcao-claw openclaw devices list --json 2>/dev/null)
                 # Check if browser already paired (token-based auth — no pending step)
                 PAIRED_DEVICE=$(echo "$DEVICES_JSON" \
                     | jq -r '.paired[] | select(.clientId == "openclaw-control-ui") | .deviceId // empty' 2>/dev/null | head -1)
@@ -661,7 +661,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
                 REQUEST_ID=$(echo "$DEVICES_JSON" \
                     | jq -r '.pending[] | select(.clientId == "openclaw-control-ui") | .requestId // empty' 2>/dev/null | head -1)
                 if [[ -n "$REQUEST_ID" ]]; then
-                    docker exec zupee-claw openclaw devices approve "$REQUEST_ID" 2>/dev/null
+                    docker exec rcao-claw openclaw devices approve "$REQUEST_ID" 2>/dev/null
                     info "Browser paired!"
                     PAIRED=true
                     break
@@ -675,7 +675,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
             fi  # end AUTO_YES skip
         else
             warn "Gateway token not generated after 30s"
-            warn "Retrieve token: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json"
+            warn "Retrieve token: docker exec rcao-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json"
         fi
     fi
 
@@ -696,7 +696,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
         else
             # Docker mode: Ollama is air-gapped, temporarily connect to squid-egress
             info "Connecting Ollama to internet for model download..."
-            docker network connect zupee-claw_squid-egress zupee-ollama 2>/dev/null || true
+            docker network connect rcao-claw_squid-egress rcao-ollama 2>/dev/null || true
             info "Pulling $OLLAMA_MODEL... (this may take several minutes)"
             if docker compose $COMPOSE_PROFILES exec ollama ollama pull "$OLLAMA_MODEL"; then
                 info "$OLLAMA_MODEL ready"
@@ -704,16 +704,16 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
                 error "Failed to pull $OLLAMA_MODEL — check network or try again later"
             fi
             info "Disconnecting Ollama from internet..."
-            docker network disconnect zupee-claw_squid-egress zupee-ollama 2>/dev/null || true
+            docker network disconnect rcao-claw_squid-egress rcao-ollama 2>/dev/null || true
         fi
     else
         if [[ "$OLLAMA_MODE" == "native" ]]; then
             warn "Pull later with: ollama pull $OLLAMA_MODEL"
         else
             warn "Pull later with:"
-            echo "  docker network connect zupee-claw_squid-egress zupee-ollama"
-            echo "  docker exec zupee-ollama ollama pull $OLLAMA_MODEL"
-            echo "  docker network disconnect zupee-claw_squid-egress zupee-ollama"
+            echo "  docker network connect rcao-claw_squid-egress rcao-ollama"
+            echo "  docker exec rcao-ollama ollama pull $OLLAMA_MODEL"
+            echo "  docker network disconnect rcao-claw_squid-egress rcao-ollama"
         fi
     fi
 
@@ -729,7 +729,7 @@ step "Verification"
 
 echo ""
 # Check containers
-if docker ps --format '{{.Names}}' | grep -q zupee-claw; then
+if docker ps --format '{{.Names}}' | grep -q rcao-claw; then
     info "Claw container: running"
 else
     warn "Claw container: not running"
@@ -742,14 +742,14 @@ if [[ "$OLLAMA_MODE" == "native" ]]; then
         warn "Ollama (native): not responding at localhost:11434"
     fi
 else
-    if docker ps --format '{{.Names}}' | grep -q zupee-ollama; then
+    if docker ps --format '{{.Names}}' | grep -q rcao-ollama; then
         info "Ollama container: running"
     else
         warn "Ollama container: not running"
     fi
 fi
 
-if docker ps --format '{{.Names}}' | grep -q zupee-squid; then
+if docker ps --format '{{.Names}}' | grep -q rcao-squid; then
     info "Squid proxy: running"
 else
     warn "Squid proxy: not running"
@@ -782,8 +782,8 @@ fi
 
 # Extract gateway auth token using jq for reliable JSON parsing
 GATEWAY_TOKEN=""
-if docker ps --format '{{.Names}}' | grep -q zupee-claw; then
-    GATEWAY_TOKEN=$(docker exec zupee-claw cat /home/openclaw/.openclaw/openclaw.json 2>/dev/null \
+if docker ps --format '{{.Names}}' | grep -q rcao-claw; then
+    GATEWAY_TOKEN=$(docker exec rcao-claw cat /home/openclaw/.openclaw/openclaw.json 2>/dev/null \
         | jq -r '.gateway.auth.token // empty' 2>/dev/null)
     if [[ -n "$GATEWAY_TOKEN" ]]; then
         info "Gateway auth token: extracted"
@@ -804,11 +804,11 @@ echo ""
 if [[ -n "$GATEWAY_TOKEN" ]]; then
 echo "  Web UI:      http://localhost:3000/#token=$GATEWAY_TOKEN"
 echo ""
-echo "  (retrieve token later: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json)"
+echo "  (retrieve token later: docker exec rcao-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json)"
 else
 echo "  Web UI:      http://localhost:3000"
 echo ""
-echo "  Retrieve token: docker exec zupee-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json"
+echo "  Retrieve token: docker exec rcao-claw jq -r .gateway.auth.token ~/.openclaw/openclaw.json"
 fi
 echo ""
 echo "  To tear down: $SCRIPT_DIR/cleanup.sh"

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# Zupee Claw - SearXNG Search Test Suite
+# RCao Claw - SearXNG Search Test Suite
 # Tests web search end-to-end: SearXNG health, JSON API, Squid ACLs,
 # engine coverage, and OpenClaw integration.
 #
@@ -29,9 +29,9 @@ fail() { FAIL_COUNT=$((FAIL_COUNT + 1)); echo -e "${RED}  FAIL${NC} $*"; }
 skip() { SKIP_COUNT=$((SKIP_COUNT + 1)); echo -e "${YELLOW}  SKIP${NC} $*"; }
 header() { echo -e "\n${BOLD}${CYAN}=== $* ===${NC}"; }
 
-CLAW_CONTAINER="zupee-claw"
-SEARXNG_CONTAINER="zupee-searxng"
-SQUID_CONTAINER="zupee-squid"
+CLAW_CONTAINER="rcao-claw"
+SEARXNG_CONTAINER="rcao-searxng"
+SQUID_CONTAINER="rcao-squid"
 SEARXNG_URL="http://searxng:8080"
 REQUEST_TIMEOUT=30
 

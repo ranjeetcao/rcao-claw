@@ -1,6 +1,6 @@
 # Systematic Debugging
 
-A 4-phase debugging methodology adapted for Docker/SSH/shell infrastructure in the Zupee Claw stack.
+A 4-phase debugging methodology adapted for Docker/SSH/shell infrastructure in the RCao Claw stack.
 
 ## Phase 1 — Reproduce
 

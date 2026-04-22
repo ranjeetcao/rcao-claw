@@ -1,6 +1,6 @@
 # Component Reference
 
-Detailed reference for every component in the Zupee Claw system. For the high-level architecture overview, see [architecture.md](architecture.md).
+Detailed reference for every component in the RCao Claw system. For the high-level architecture overview, see [architecture.md](architecture.md).
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Detailed reference for every component in the Zupee Claw system. For the high-le
 
 ### openclaw (Claw Gateway)
 
-**Container:** `zupee-claw`
+**Container:** `rcao-claw`
 **Image:** Built from `docker/Dockerfile` (base: `node:22-slim`)
 **Port:** `127.0.0.1:3000:3000`
 
@@ -58,7 +58,7 @@ The main gateway service. Hosts the Web UI, runs local LLM inference requests to
 
 ### ollama (LLM Inference)
 
-**Container:** `zupee-ollama`
+**Container:** `rcao-ollama`
 **Image:** `ollama/ollama:0.20.3` (pinned version)
 **Port:** None exposed (internal only)
 
@@ -75,7 +75,7 @@ Runs local LLM inference using the Qwen 3.5 model. Fully air-gapped -- no intern
 
 ### squid (HTTP Proxy)
 
-**Container:** `zupee-squid`
+**Container:** `rcao-squid`
 **Image:** `ubuntu/squid:latest`
 **Port:** Internal 3128 (not exposed by default; can be temporarily exposed on `127.0.0.1:3128` for debugging)
 
@@ -147,11 +147,11 @@ service-status
 
 **What it does:**
 1. Parses `.env` safely using `grep` + `cut` (never `source .env` -- prevents code injection)
-2. Resolves `REPO`, `WORKSPACE_DIR`, `OPENCLAW_VERSION` from `.env`
-3. Accepts optional command-line repo override
-4. Validates repo name: blocks `..`, `/`, shell metacharacters
+2. Resolves `WORKSPACE` and `OPENCLAW_VERSION` from `.env`
+3. Accepts optional command-line override (repo name under the workspace parent, or a full path)
+4. Validates override: blocks `..` and shell metacharacters
 5. Verifies target directory exists
-6. Exports: `WORKDIR`, `WORKSPACE_ROOT`, `REPO`, `OPENCLAW_VERSION`
+6. Exports: `WORKDIR`, `OPENCLAW_VERSION`
 
 ### git-status.sh
 
@@ -226,7 +226,7 @@ service-status
     "providers": {
       "ollama": {
         "baseUrl": "http://ollama:11434",
-        "models": [{ "id": "gemma4:e2b", "name": "Gemma 4 E2B", "api": "ollama" }]
+        "models": [{ "id": "qwen3.5:9b", "name": "Qwen 3.5 9B", "api": "ollama" }]
       }
     }
   },
@@ -248,7 +248,7 @@ service-status
 
 ### claude-settings.json
 
-**Location:** `config/claude-settings.json` (deployed to `$WORKSPACE_DIR/.claude/settings.json`)
+**Location:** `config/claude-settings.json` (deployed to `$WORKSPACE/.claude/settings.json`)
 **Purpose:** Persistent Claude Code deny rules that complement the CLI flags in `run-claude.sh`
 
 **Both sources must stay in sync.** If `run-claude.sh` blocks a tool but `settings.json` doesn't (or vice versa), behavior is unpredictable.
@@ -367,7 +367,7 @@ Documents the full allowed/blocked tool matrix, Slack Socket Mode capabilities, 
 | 2. Directories | Create all host directories, fix permissions for container UID 1001, protect personality files |
 | 3. SSH Keys | Generate Ed25519 keypair (`config/openclaw-docker-key`), set 640 permissions with shared group |
 | 4. Host User | Create `openclaw-bot` with restricted shell, install authorized_keys with ForceCommand, symlink scripts, install SSH hardening config |
-| 5. Claude Config | Deploy `claude-settings.json` to `$WORKSPACE_DIR/.claude/settings.json` |
+| 5. Claude Config | Deploy `claude-settings.json` to `$WORKSPACE/.claude/settings.json` |
 | 6. Docker | Build images, start containers, wait for health, extract auth token, auto-pair browser, optionally pull Ollama model |
 | 7. Verification | Check all containers running, web UI healthy, Slack tokens present, display summary |
 
@@ -385,7 +385,7 @@ Documents the full allowed/blocked tool matrix, Slack Socket Mode capabilities, 
 | 2 | SSH hardening config (`/etc/ssh/sshd_config.d/openclaw.conf`) | y/N prompt |
 | 3 | SSH keypair (`config/openclaw-docker-key*`) | y/N prompt |
 | 4 | `openclaw-bot` user and home directory | y/N prompt |
-| 5 | Claude Code settings (`$WORKSPACE_DIR/.claude/settings.json`) | y/N prompt |
+| 5 | Claude Code settings (`$WORKSPACE/.claude/settings.json`) | y/N prompt |
 | 6 | Reclaim file ownership from container UID 1001 | Auto with sudo |
 | 7 | Gateway runtime data (agents, canvas, devices, etc.) | Automatic |
 | 8 | Agent data (credentials, skills, memory) | y/N + type "DELETE" |

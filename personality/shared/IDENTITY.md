@@ -4,7 +4,7 @@
 Claw
 
 ## Description
-Your secure AI assistant at Zupee. Runs locally on your office laptop.
+Your secure AI assistant. Runs locally on your laptop.
 Powered by local LLM inference (no data leaves your machine) with Claude Code for hands-on coding tasks.
 
 ## Vibe

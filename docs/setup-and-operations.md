@@ -28,8 +28,8 @@
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/zupee-labs/zupee-claw.git
-cd zupee-claw
+git clone https://github.com/ranjeetcao/rcao-claw.git
+cd rcao-claw
 ```
 
 ### 2. Configure Environment
@@ -44,9 +44,8 @@ cp .env.example .env
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
 | `OPENCLAW_VERSION` | `2026.4.2` | Yes | Pinned Claw gateway version |
-| `REPO` | `my-project` | Yes | Default repo directory under workspace |
-| `WORKSPACE_DIR` | `~/workspace` | Yes | Base directory where dev repos live |
-| `OLLAMA_MODEL` | `gemma4:e2b` | Yes | LLM model for local inference |
+| `WORKSPACE` | `~/workspace/my-project` | Yes | Target repo directory (Claude Code operates here) |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | Yes | LLM model for local inference |
 | `SLACK_BOT_TOKEN` | (empty) | No | Slack bot OAuth token (`xoxb-...`) |
 | `SLACK_APP_TOKEN` | (empty) | No | Slack app-level token (`xapp-...`) |
 
@@ -94,13 +93,13 @@ The setup script runs through 7 phases with interactive prompts at each step. Al
   - Reloads sshd (Linux) or notifies for restart (macOS)
 
 #### Phase 5: Claude Code Config
-- Deploys `config/claude-settings.json` to `$WORKSPACE_DIR/.claude/settings.json`
+- Deploys `config/claude-settings.json` to `$WORKSPACE/.claude/settings.json`
 - Creates `.claude/` directory if it doesn't exist
 
 #### Phase 6: Docker Build & Start
 - **Prompt:** "Build and start Docker containers? [y/N]"
   - Builds openclaw image with `OPENCLAW_VERSION` build arg
-  - Starts all 3 services (ollama, squid, openclaw)
+  - Starts all services (ollama, squid, searxng, valkey, openclaw)
   - Waits up to 90s for Web UI health check
   - Extracts gateway auth token from `openclaw.json`
   - Opens browser to `http://localhost:3000`
@@ -178,7 +177,7 @@ cd docker && docker compose logs -f squid
 
 ```bash
 # All containers running?
-docker ps --filter "name=zupee-"
+docker ps --filter "name=rcao-"
 
 # Web UI health
 curl -sf http://localhost:3000/health
@@ -193,7 +192,7 @@ docker compose -f docker/docker-compose.yml exec openclaw \
 
 ### Working with Repos
 
-The default repo is set in `.env` as `REPO`. All gateway commands accept an optional repo override:
+The default workspace is set in `.env` as `WORKSPACE`. All gateway commands accept an optional repo override (a name under the workspace parent, or a full path):
 
 ```bash
 # Default repo
@@ -203,7 +202,7 @@ ssh openclaw-bot@host "git-status"
 ssh openclaw-bot@host "git-status other-project"
 ```
 
-Available repos are any directories under `$WORKSPACE_DIR/`.
+Available repos are any directories under `$WORKSPACE/`.
 
 ## Adding a New Command
 
@@ -258,13 +257,13 @@ Available repos are any directories under `$WORKSPACE_DIR/`.
 2. Pull the new model (requires temporary internet access):
    ```bash
    # Connect Ollama to internet temporarily
-   docker network connect zupee-claw_squid-egress zupee-ollama
+   docker network connect rcao-claw_squid-egress rcao-ollama
 
    # Pull model
    docker compose -f docker/docker-compose.yml exec ollama ollama pull llama3.1
 
    # Disconnect from internet
-   docker network disconnect zupee-claw_squid-egress zupee-ollama
+   docker network disconnect rcao-claw_squid-egress rcao-ollama
    ```
 
 3. Update `openclaw.json` to reference the new model ID.
@@ -317,9 +316,9 @@ Beyond speed, we test models on 6 real-world capability categories that reflect 
 | RAM | Recommended Model | Rationale |
 |-----|-------------------|-----------|
 | 16 GB | **qwen3.5:4b** | 100% quality, 3.4 GB disk, leaves room for IDE + Docker |
-| 18-24 GB | **gemma4:e2b** | 100% quality, 105.1 tok/s, best throughput with Metal GPU |
-| 24 GB+ | **gemma4:e2b** | 100% quality, 2x faster than alternatives, 7.2 GB disk |
-| 32 GB+ | **qwen3.5:9b** | 100% quality, good for complex reasoning tasks at scale |
+| 18-24 GB | **qwen3.5:9b** | Project default. 100% quality, 6.6 GB disk, solid 28.6 tok/s |
+| 24 GB+ | **qwen3.5:9b** | Project default. 100% quality, headroom for larger context |
+| 32 GB+ | **qwen3.5:9b** | Project default. 100% quality, good for complex reasoning at scale |
 
 ### Running Benchmarks
 
@@ -374,7 +373,7 @@ The cleanup script walks through each component with individual confirmation pro
 
 ```bash
 # Check container is running
-docker ps --filter "name=zupee-claw"
+docker ps --filter "name=rcao-claw"
 
 # Check health endpoint
 curl -v http://localhost:3000/health
@@ -383,7 +382,7 @@ curl -v http://localhost:3000/health
 cd docker && docker compose logs openclaw
 
 # Verify port binding
-docker port zupee-claw
+docker port rcao-claw
 # Should show: 3000/tcp -> 127.0.0.1:3000
 ```
 
@@ -400,10 +399,10 @@ cat /etc/ssh/sshd_config.d/openclaw.conf
 cat ~openclaw-bot/.ssh/authorized_keys
 
 # Check SSH key in container
-docker exec zupee-claw ls -la /home/openclaw/.ssh/
+docker exec rcao-claw ls -la /home/openclaw/.ssh/
 
 # Test SSH manually
-docker exec zupee-claw ssh -v -i /home/openclaw/.ssh/id_ed25519 \
+docker exec rcao-claw ssh -v -i /home/openclaw/.ssh/id_ed25519 \
   openclaw-bot@host.docker.internal "service-status"
 ```
 
@@ -411,7 +410,7 @@ docker exec zupee-claw ssh -v -i /home/openclaw/.ssh/id_ed25519 \
 
 ```bash
 # Check container health
-docker inspect --format='{{.State.Health.Status}}' zupee-ollama
+docker inspect --format='{{.State.Health.Status}}' rcao-ollama
 
 # Check Ollama logs
 cd docker && docker compose logs ollama
@@ -420,7 +419,7 @@ cd docker && docker compose logs ollama
 docker compose -f docker/docker-compose.yml exec ollama ollama list
 
 # Verify network connectivity from openclaw
-docker exec zupee-claw curl -s http://ollama:11434/api/tags
+docker exec rcao-claw curl -s http://ollama:11434/api/tags
 ```
 
 ### Claude Code commands failing
@@ -430,10 +429,10 @@ docker exec zupee-claw curl -s http://ollama:11434/api/tags
 tail -20 logs/claude.log
 
 # Verify Claude settings deployed
-cat $WORKSPACE_DIR/.claude/settings.json
+cat $WORKSPACE/.claude/settings.json
 
 # Check workspace directory exists
-ls -la $WORKSPACE_DIR/$REPO/
+ls -la $WORKSPACE/
 ```
 
 ### Permission errors (file ownership)
@@ -464,7 +463,7 @@ cat ~openclaw-bot/openclaw/.rate-limit
 
 ```bash
 # Check Squid container
-docker ps --filter "name=zupee-squid"
+docker ps --filter "name=rcao-squid"
 
 # Check Squid logs
 tail -f logs/squid/access.log
@@ -486,10 +485,10 @@ If containers are OOM-killed or CPU-throttled:
 
 ```bash
 # Check resource usage
-docker stats zupee-claw zupee-ollama zupee-squid
+docker stats rcao-claw rcao-ollama rcao-squid
 
 # Check for OOM kills
-docker inspect --format='{{.State.OOMKilled}}' zupee-ollama
+docker inspect --format='{{.State.OOMKilled}}' rcao-ollama
 
 # Increase limits in .env or docker-compose.yml
 # Ollama needs the most resources (50% RAM recommended)

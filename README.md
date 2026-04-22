@@ -1,15 +1,15 @@
-# Zupee Claw
+# RCao Claw
 
 <!-- Uncomment when CI is enabled
-[![Lint](https://github.com/zupee-labs/zupee-claw/actions/workflows/lint.yml/badge.svg)](https://github.com/zupee-labs/zupee-claw/actions/workflows/lint.yml)
+[![Lint](https://github.com/ranjeetcao/rcao-claw/actions/workflows/lint.yml/badge.svg)](https://github.com/ranjeetcao/rcao-claw/actions/workflows/lint.yml)
 -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Secure, air-gapped AI development partner running inside Docker. Uses local LLM inference via Ollama and delegates coding tasks to Claude Code through a locked-down SSH gateway.
 
-## Why Zupee Claw?
+## Why RCao Claw?
 
-Running AI coding assistants on a work machine raises real concerns: unrestricted shell access, network calls to unknown endpoints, accidental data leaks. Zupee Claw solves this by:
+Running AI coding assistants on a work machine raises real concerns: unrestricted shell access, network calls to unknown endpoints, accidental data leaks. RCao Claw solves this by:
 
 - **Air-gapping the AI** inside a Docker container with no direct host access
 - **Whitelisting every command** the AI can run on the host via an SSH gateway
@@ -31,7 +31,7 @@ You (browser) -> localhost:3000 (Claw Web UI)
               Host: git-status, git-pull, run-tests, run-claude
                       |
                       v
-              Claude Code (locked to $WORKSPACE_DIR/$REPO)
+              Claude Code (locked to $WORKSPACE)
 ```
 
 The AI operates through a two-layer sandbox:
@@ -51,12 +51,12 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture, secu
 
 ```bash
 # 1. Clone
-git clone https://github.com/zupee-labs/zupee-claw.git
-cd zupee-claw
+git clone https://github.com/ranjeetcao/rcao-claw.git
+cd rcao-claw
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env — set WORKSPACE_DIR, REPO, OLLAMA_MODEL
+# Edit .env — set WORKSPACE, OLLAMA_MODEL
 
 # 3. Run setup (creates SSH keys, host user, copies configs)
 ./setup.sh
@@ -72,9 +72,8 @@ All settings live in `.env` (copied from `.env.example`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENCLAW_VERSION` | `2026.4.2` | Pinned Claw version |
-| `REPO` | `my-project` | Default repo name under workspace dir |
-| `WORKSPACE_DIR` | `~/workspace` | Root directory where your repos live |
-| `OLLAMA_MODEL` | `gemma4:e2b` | Ollama model for local inference |
+| `WORKSPACE` | `~/workspace/my-project` | Target repo directory (Claude Code operates here) |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | Ollama model for local inference |
 
 ## Daily Usage
 
@@ -137,7 +136,7 @@ cat bin/allowed-commands.conf
 **Ollama model not responding:**
 ```bash
 # Pull the model manually
-docker compose -f docker/docker-compose.yml exec ollama ollama pull gemma4:e2b
+docker compose -f docker/docker-compose.yml exec ollama ollama pull qwen3.5:9b
 # Check Ollama status
 docker compose -f docker/docker-compose.yml exec ollama ollama list
 ```
@@ -147,7 +146,7 @@ docker compose -f docker/docker-compose.yml exec ollama ollama list
 # Check Claude execution log
 tail -f logs/claude.log
 # Verify workspace exists
-ls -la $WORKSPACE_DIR/$REPO
+ls -la $WORKSPACE
 ```
 
 ## Teardown
@@ -164,7 +163,7 @@ After running `setup.sh`, verify everything works:
 
 ```bash
 # 1. Check containers are running
-docker ps --format 'table {{.Names}}\t{{.Status}}' | grep zupee
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep rcao
 
 # 2. Validate Docker Compose config
 docker compose -f docker/docker-compose.yml config --quiet

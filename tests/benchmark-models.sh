@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# Zupee Claw - Model Benchmark Script
+# RCao Claw - Model Benchmark Script
 # Tests Ollama models for latency, throughput, and quality on your hardware.
 # Helps pick the best model for your laptop configuration.
 #
@@ -30,8 +30,8 @@ header() { echo -e "\n${BOLD}${CYAN}=== $* ===${NC}"; }
 
 # --- Configuration -----------------------------------------------------------
 
-OLLAMA_CONTAINER="zupee-ollama"
-CLAW_CONTAINER="zupee-claw"
+OLLAMA_CONTAINER="rcao-ollama"
+CLAW_CONTAINER="rcao-claw"
 
 # Detect Ollama mode from .env
 ENV_FILE="$SCRIPT_DIR/../.env"
@@ -441,7 +441,7 @@ benchmark_model() {
 # --- Main --------------------------------------------------------------------
 
 main() {
-    header "Zupee Claw - Model Benchmark"
+    header "RCao Claw - Model Benchmark"
     echo ""
     echo "  Tests models for latency, throughput, and quality on your hardware."
     echo "  Each prompt is run ${RUNS_PER_PROMPT} times and averaged."

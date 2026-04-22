@@ -1,6 +1,6 @@
 # Docker Operations
 
-Docker Compose topology and operations reference for the Zupee Claw stack.
+Docker Compose topology and operations reference for the RCao Claw stack.
 
 ## Stack Overview
 
@@ -72,8 +72,7 @@ All configuration is driven by the **`.env`** file in the project root. Key vari
 | Variable          | Purpose                              |
 |-------------------|--------------------------------------|
 | `OPENCLAW_VERSION`| Version tag for the openclaw image   |
-| `REPO`            | Target repository for the agent      |
-| `WORKSPACE_DIR`   | Host path to the workspace           |
+| `WORKSPACE`       | Host path to the target repo         |
 | `OLLAMA_MODEL`    | Default LLM model to use             |
 
 - The `env_file` directive in `docker-compose.yml` loads `.env` into the openclaw container.

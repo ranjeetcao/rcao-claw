@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# Zupee Claw - Destructive Test Suite
+# RCao Claw - Destructive Test Suite
 # Tests setup.sh and cleanup.sh robustness by simulating failures at every
 # stage and verifying recovery on re-run.
 #
@@ -93,7 +93,7 @@ nuclear_cleanup() {
     docker compose --profile docker-ollama down --volumes --remove-orphans >> "$TEST_LOG" 2>&1 || true
     cd "$PROJECT_DIR"
 
-    docker image prune -f --filter "label=com.docker.compose.project=zupee-claw" >> "$TEST_LOG" 2>&1 || true
+    docker image prune -f --filter "label=com.docker.compose.project=rcao-claw" >> "$TEST_LOG" 2>&1 || true
 
     # Remove ~/.openclaw (try without sudo first, fallback to sudo)
     if [[ -d "$HOME/.openclaw" ]]; then
@@ -172,23 +172,23 @@ test_fresh_setup() {
         fail "openclaw.json missing"
     fi
 
-    if container_running "zupee-claw"; then
-        pass "zupee-claw container running"
+    if container_running "rcao-claw"; then
+        pass "rcao-claw container running"
     else
-        fail "zupee-claw container not running"
+        fail "rcao-claw container not running"
     fi
 
-    if container_running "zupee-squid"; then
-        pass "zupee-squid container running"
+    if container_running "rcao-squid"; then
+        pass "rcao-squid container running"
     else
-        fail "zupee-squid container not running"
+        fail "rcao-squid container not running"
     fi
 
     # In native mode, Docker ollama should NOT be running
-    if ! container_running "zupee-ollama"; then
-        pass "zupee-ollama NOT running (native mode correct)"
+    if ! container_running "rcao-ollama"; then
+        pass "rcao-ollama NOT running (native mode correct)"
     else
-        fail "zupee-ollama is running in native mode"
+        fail "rcao-ollama is running in native mode"
     fi
 
     sleep 10  # Wait for gateway to fully start
@@ -268,15 +268,15 @@ test_container_crash_recovery() {
     header "Test: Container crash then setup recovery"
 
     section "Killing containers"
-    docker kill zupee-claw 2>/dev/null || true
-    docker kill zupee-squid 2>/dev/null || true
+    docker kill rcao-claw 2>/dev/null || true
+    docker kill rcao-squid 2>/dev/null || true
 
     sleep 2
 
-    if ! container_running "zupee-claw"; then
-        pass "zupee-claw killed"
+    if ! container_running "rcao-claw"; then
+        pass "rcao-claw killed"
     else
-        fail "zupee-claw still running"
+        fail "rcao-claw still running"
     fi
 
     section "Re-running setup to recover"
@@ -373,7 +373,7 @@ test_cleanup_stages() {
     fi
 
     # Containers should be gone
-    if ! container_running "zupee-claw"; then
+    if ! container_running "rcao-claw"; then
         pass "Containers stopped after cleanup"
     else
         fail "Containers still running after cleanup"
@@ -413,7 +413,7 @@ test_full_cleanup_and_setup() {
         fail "~/.openclaw survived nuclear cleanup"
     fi
 
-    if ! container_running "zupee-claw"; then
+    if ! container_running "rcao-claw"; then
         pass "No containers running after nuclear cleanup"
     else
         fail "Containers still running after nuclear cleanup"
@@ -472,7 +472,7 @@ main() {
 
     mkdir -p "$PROJECT_DIR/logs"
 
-    header "Zupee Claw - Destructive Test Suite"
+    header "RCao Claw - Destructive Test Suite"
     log "  Iterations: $iterations"
     log "  Log: $TEST_LOG"
     log "  Date: $(date -Iseconds)"
