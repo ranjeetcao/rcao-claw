@@ -316,9 +316,9 @@ Beyond speed, we test models on 6 real-world capability categories that reflect 
 | RAM | Recommended Model | Rationale |
 |-----|-------------------|-----------|
 | 16 GB | **qwen3.5:4b** | 100% quality, 3.4 GB disk, leaves room for IDE + Docker |
-| 18-24 GB | **gemma4:e2b** | 100% quality, 105.1 tok/s, best throughput with Metal GPU |
-| 24 GB+ | **gemma4:e2b** | 100% quality, 2x faster than alternatives, 7.2 GB disk |
-| 32 GB+ | **qwen3.5:9b** | 100% quality, good for complex reasoning tasks at scale |
+| 18-24 GB | **qwen3.5:9b** | Project default. 100% quality, 6.6 GB disk, solid 28.6 tok/s |
+| 24 GB+ | **qwen3.5:9b** | Project default. 100% quality, headroom for larger context |
+| 32 GB+ | **qwen3.5:9b** | Project default. 100% quality, good for complex reasoning at scale |
 
 ### Running Benchmarks
 
