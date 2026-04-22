@@ -116,11 +116,14 @@ scan_content() {
     file_violations="${file_violations}  - GitHub token (ghp_/ghs_) detected"$'\n'
   fi
 
-  # Slack tokens
-  if echo "$content" | grep -qE 'xoxb-'; then
+  # Slack tokens — require real-token structure to avoid false positives on
+  # docs/examples that reference the `xoxb-...` / `xapp-...` prefixes.
+  # Bot token format: xoxb-<team_id>-<bot_id>-<24+ alphanum>.
+  if echo "$content" | grep -qE 'xoxb-[0-9]+-[0-9]+-[A-Za-z0-9]{20,}'; then
     file_violations="${file_violations}  - Slack bot token (xoxb-) detected"$'\n'
   fi
-  if echo "$content" | grep -qE 'xapp-'; then
+  # App token format: xapp-<version>-<app_id_A...>-<digits>-<64 hex>.
+  if echo "$content" | grep -qE 'xapp-[0-9]+-[A-Z][A-Z0-9]+-[0-9]+-[a-f0-9]{20,}'; then
     file_violations="${file_violations}  - Slack app token (xapp-) detected"$'\n'
   fi
 
